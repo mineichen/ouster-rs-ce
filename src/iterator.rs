@@ -12,7 +12,7 @@ impl CartesianIterator<Arc<[(f32, f32)]>> {
             .map(|(azi, roh)| (-2. * PI * (azi / 360.), 2. * PI * (roh / 360.)))
             .collect::<Arc<_>>();
 
-        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[0 * 4 + 3];
+        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
         let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
         Self::new(
             azimuth_roh_lut,
@@ -40,7 +40,7 @@ where
     TSlice: AsRef<[(f32, f32)]>,
 {
     fn new(azimuth_alt: TSlice, horizontal_resolution: u16, offset_x: f32, offset_z: f32) -> Self {
-        assert!(azimuth_alt.as_ref().len() > 0);
+        assert!(!azimuth_alt.as_ref().is_empty());
         Self {
             horizontal_resolution,
             azimuth_alt,

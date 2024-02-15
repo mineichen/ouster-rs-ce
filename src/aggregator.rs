@@ -18,7 +18,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Default for Aggregator<COLUMNS, 
 }
 
 pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize>(
-    &'a Box<[Box<OusterPacket<COLUMNS, LAYERS>>]>,
+    &'a [Box<OusterPacket<COLUMNS, LAYERS>>],
 );
 
 impl<'a, const COLUMNS: usize, const LAYERS: usize> CompleteData<'a, COLUMNS, LAYERS> {
@@ -33,9 +33,9 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         Self {
             measurements_per_rotation,
             complete_buf: (0..required_packets)
-                .map(|_| Box::new(OusterPacket::<COLUMNS, LAYERS>::default()))
+                .map(|_| Default::default())
                 .collect::<Box<_>>(),
-            tmp: Box::new(Default::default()),
+            tmp: Default::default(),
             complete: Default::default(),
             cur_measurement: Default::default(),
         }
