@@ -108,8 +108,8 @@ pub struct RangeData {
 }
 
 impl RangeData {
-    pub fn get_distance(&self) -> f32 {
-        (self.raw & ((1 << 20) - 1)) as f32
+    pub fn get_distance(&self) -> u32 {
+        self.raw & ((1 << 20) - 1)
     }
 }
 

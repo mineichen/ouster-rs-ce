@@ -54,10 +54,6 @@ fn ouster_pcd_converter<const LAYERS: usize>(
     }
     .build_from_writer(Cursor::new(&mut buf))?;
 
-    let offset_x = config.beam_intrinsics.beam_to_lidar_transform[0 * 4 + 3];
-    let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
-    let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt();
-
     let mut image = vec![0u8; 1024 * LAYERS];
     let mut aggregator = Aggregator::default();
 
@@ -73,19 +69,11 @@ fn ouster_pcd_converter<const LAYERS: usize>(
                 continue;
             }
 
-            let polar_points = complete_buf
-                .iter()
-                .flat_map(|lidar_packet| lidar_packet.columns.iter())
-                .flat_map(|column| {
-                    column
-                        .channels
-                        .iter()
-                        .map(move |point| point.info_ret1.get_distance() - nvec)
-                });
-
             let iter = CartesianIterator::from_config(&config);
-            for (idx, (distance, polar_point)) in polar_points.zip(iter).enumerate() {
-                let (x, y, z) = polar_point.calc_xyz(distance);
+            for (idx, (distance, polar_point)) in
+                complete_buf.iter_points_flat(&config).zip(iter).enumerate()
+            {
+                let (x, y, z) = polar_point.calc_xyz(distance as f32);
 
                 let x = x.min(20_000.).max(-20000.);
                 let y = y.min(20_000.).max(-20000.);
@@ -94,7 +82,7 @@ fn ouster_pcd_converter<const LAYERS: usize>(
 
                 const FACTOR: f32 = 0.01;
                 const OFFSET: f32 = 0.;
-                let val = (distance * FACTOR + OFFSET).min(255.).max(0.) as u8;
+                let val = (distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
                 let col = (polar_point.azimuth / (PI * 2.) * (SCAN_WIDTH) as f32) as usize
