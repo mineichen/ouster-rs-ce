@@ -80,8 +80,11 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
 
         if self.cur_measurement < self.tmp.header.frame_id {
             self.entries.reverse();
-            self.completion_historgram[0] +=
-                (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
+            if !self.entries.iter().all(|x| x.complete == 0) {
+                self.completion_historgram[0] +=
+                    (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
+            }
+
             self.completion_historgram[self.entries[0]
                 .complete
                 .min(self.entries[0].complete_buf.len())] += 1;
