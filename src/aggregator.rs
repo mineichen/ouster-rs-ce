@@ -48,8 +48,16 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         }
     }
 
-    pub fn get_histogram(&self) -> impl Iterator<Item = u32> + '_ {
-        self.completion_historgram.iter().map(|x| x.0)
+    pub fn get_histogram(&self) -> Vec<u32> {
+        let mut r = self
+            .completion_historgram
+            .iter()
+            .map(|x| x.0)
+            .collect::<Vec<_>>();
+        for e in self.entries.iter() {
+            r[e.complete.min(self.entries[0].complete_buf.len())] += 1;
+        }
+        r
     }
 
     pub fn put_data_value(
@@ -80,14 +88,14 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
 
         if self.cur_measurement < self.tmp.header.frame_id {
             self.entries.reverse();
-            if !self.entries.iter().all(|x| x.complete == 0) {
+            if self.entries[0].complete != 0 {
                 self.completion_historgram[0] +=
                     (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
+                self.completion_historgram[self.entries[0]
+                    .complete
+                    .min(self.entries[0].complete_buf.len())] += 1;
             }
 
-            self.completion_historgram[self.entries[0]
-                .complete
-                .min(self.entries[0].complete_buf.len())] += 1;
             self.entries[0].complete = 1;
             self.cur_measurement = self.tmp.header.frame_id;
             std::mem::swap(&mut self.entries[0].complete_buf[idx], &mut self.tmp);
@@ -185,5 +193,8 @@ mod tests {
         aggregator
             .put_data_value(input.next().unwrap())
             .expect("Pointcloud should be complete");
+        let hist = aggregator.get_histogram();
+        assert_eq!(0, hist[0], "{:?}", hist);
+        assert_eq!(2, hist[63], "{:?}", hist);
     }
 }
