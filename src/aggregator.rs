@@ -1,4 +1,4 @@
-use std::future::Future;
+use std::{future::Future, num::Saturating};
 
 use crate::{OusterConfig, OusterPacket};
 
@@ -24,7 +24,7 @@ pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize> {
     measurements_per_rotation: usize,
     entries: [AggregatorEntry<COLUMNS, LAYERS>; 2],
     tmp: Box<OusterPacket<COLUMNS, LAYERS>>,
-
+    completion_historgram: Vec<Saturating<u32>>,
     cur_measurement: u16,
 }
 
@@ -42,8 +42,14 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             measurements_per_rotation,
             entries: [entry.clone(), entry],
             tmp: Default::default(),
+            // +5 is to detect if more than the expected number of Packagers enters
+            completion_historgram: vec![Saturating(0); measurements_per_rotation + 5],
             cur_measurement: Default::default(),
         }
+    }
+
+    pub fn get_histogram(&self) -> impl Iterator<Item = u32> + '_ {
+        self.completion_historgram.iter().map(|x| x.0)
     }
 
     pub fn put_data_value(
@@ -74,6 +80,11 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
 
         if self.cur_measurement < self.tmp.header.frame_id {
             self.entries.reverse();
+            self.completion_historgram[0] +=
+                (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
+            if let Some(bin) = self.completion_historgram.get_mut(self.entries[0].complete) {
+                *bin += 1
+            }
             self.entries[0].complete = 1;
             self.cur_measurement = self.tmp.header.frame_id;
             std::mem::swap(&mut self.entries[0].complete_buf[idx], &mut self.tmp);
