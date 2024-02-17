@@ -25,6 +25,7 @@ pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize> {
     entries: [AggregatorEntry<COLUMNS, LAYERS>; 2],
     tmp: Box<OusterPacket<COLUMNS, LAYERS>>,
     completion_historgram: Vec<Saturating<u32>>,
+    dropped_frames: Saturating<u32>,
     cur_measurement: u16,
 }
 
@@ -32,6 +33,12 @@ impl<const COLUMNS: usize, const LAYERS: usize> Default for Aggregator<COLUMNS, 
     fn default() -> Self {
         Self::new(1024)
     }
+}
+
+#[derive(Debug)]
+pub struct AggregatorStatistics {
+    pub completion_historgram: Vec<u32>,
+    pub dropped_frames: u32,
 }
 
 impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
@@ -44,6 +51,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             tmp: Default::default(),
             // +1 is to detect if more than the expected number of Packagers enters
             completion_historgram: vec![Saturating(0); required_packets + 1],
+            dropped_frames: Saturating(0),
             cur_measurement: Default::default(),
         }
     }
@@ -58,6 +66,12 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             r[e.complete.min(self.entries[0].complete_buf.len())] += 1;
         }
         r
+    }
+    pub fn get_statistics(&self) -> AggregatorStatistics {
+        AggregatorStatistics {
+            completion_historgram: self.get_histogram(),
+            dropped_frames: self.dropped_frames.0,
+        }
     }
 
     pub fn put_data_value(
@@ -112,6 +126,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
                     Some(CompleteData(&entry.complete_buf))
                 }
             } else {
+                self.dropped_frames += 1;
                 None
             }
         }
