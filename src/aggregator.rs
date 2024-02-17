@@ -43,7 +43,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             entries: [entry.clone(), entry],
             tmp: Default::default(),
             // +5 is to detect if more than the expected number of Packagers enters
-            completion_historgram: vec![Saturating(0); measurements_per_rotation + 5],
+            completion_historgram: vec![Saturating(0); required_packets + 5],
             cur_measurement: Default::default(),
         }
     }
