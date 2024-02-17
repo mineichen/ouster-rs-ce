@@ -62,7 +62,7 @@ fn ouster_pcd_converter<const LAYERS: usize>(
         if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS>>() {
             continue;
         }
-        let lidar_packet = OusterPacket::<16, LAYERS>::from_maybe_unaligned(slice);
+        let lidar_packet = OusterPacket::<16, LAYERS>::from_maybe_unaligned(slice)?;
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
             if skip_complete > 0 {
                 skip_complete -= 1;

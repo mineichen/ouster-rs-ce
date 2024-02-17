@@ -39,7 +39,7 @@ impl<const TCOLUMNS: usize, const TCHANNELS: usize> OusterPacket<TCOLUMNS, TCHAN
     // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
     // mut allows to implement this in the future without breaking changes
     #[cfg(target_endian = "little")]
-    pub fn from_aligned_memory(buffer: &[u8]) -> &Self {
+    pub unsafe fn from_aligned_memory(buffer: &[u8]) -> &Self {
         if (buffer.as_ptr()) as usize % 32 != 0 {
             panic!("Buffer has to be aligned");
         }
@@ -47,17 +47,31 @@ impl<const TCOLUMNS: usize, const TCHANNELS: usize> OusterPacket<TCOLUMNS, TCHAN
         unsafe { &*(buffer.as_ptr() as *const Self) }
     }
 
-    pub fn from_maybe_unaligned(buffer: &[u8]) -> Self {
+    pub fn from_maybe_unaligned(buffer: &[u8]) -> Result<Self, SizeMismatchError> {
         let mut inner = Self::default();
         let s = std::mem::size_of::<Self>();
         {
             let inner_ptr: *mut u8 = (&mut inner) as *mut Self as _;
             let as_buf = unsafe { std::slice::from_raw_parts_mut(inner_ptr, s) };
+            if as_buf.len() != buffer.len() {
+                return Err(SizeMismatchError {
+                    expected: as_buf.len(),
+                    actual: buffer.len(),
+                });
+            }
             as_buf.copy_from_slice(buffer);
         }
-        inner
+        Ok(inner)
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Expected {expected}, got {actual}")]
+pub struct SizeMismatchError {
+    expected: usize,
+    actual: usize,
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Column<const TCHANNELS: usize> {
