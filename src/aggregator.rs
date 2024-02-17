@@ -42,8 +42,8 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             measurements_per_rotation,
             entries: [entry.clone(), entry],
             tmp: Default::default(),
-            // +5 is to detect if more than the expected number of Packagers enters
-            completion_historgram: vec![Saturating(0); required_packets + 5],
+            // +1 is to detect if more than the expected number of Packagers enters
+            completion_historgram: vec![Saturating(0); required_packets + 1],
             cur_measurement: Default::default(),
         }
     }
@@ -82,9 +82,9 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             self.entries.reverse();
             self.completion_historgram[0] +=
                 (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
-            if let Some(bin) = self.completion_historgram.get_mut(self.entries[0].complete) {
-                *bin += 1
-            }
+            self.completion_historgram[self.entries[0]
+                .complete
+                .min(self.entries[0].complete_buf.len())] += 1;
             self.entries[0].complete = 1;
             self.cur_measurement = self.tmp.header.frame_id;
             std::mem::swap(&mut self.entries[0].complete_buf[idx], &mut self.tmp);
