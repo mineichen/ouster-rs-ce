@@ -23,6 +23,14 @@ fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
     )
 }
 
+#[test]
+fn ouster_pcd_2047() -> Result<(), Box<dyn std::error::Error>> {
+    ouster_pcd_converter::<128>(
+        "2023122_2047_OS-0-128_122313000118.json",
+        "2023122_2047_OS-0-128_122313000118.pcap",
+    )
+}
+
 fn ouster_pcd_converter<const LAYERS: usize>(
     test_json_path: &str,
     test_pcap_file: &str,
@@ -39,8 +47,8 @@ fn ouster_pcd_converter<const LAYERS: usize>(
 
     let mut min = f32::MAX;
     let mut max = f32::MIN;
-    let mut skip_complete = 130;
-    const SCAN_WIDTH: u16 = 1024;
+    let mut skip_complete = 100000000;
+    let scan_width: u16 = config.config_params.lidar_mode.horizontal_resolution();
 
     //const CAPTURE_POINTS: usize = 70974464;
     const CAPTURE_POINTS: usize = 151072;
@@ -54,8 +62,8 @@ fn ouster_pcd_converter<const LAYERS: usize>(
     }
     .build_from_writer(Cursor::new(&mut buf))?;
 
-    let mut image = vec![0u8; 1024 * LAYERS];
-    let mut aggregator = Aggregator::default();
+    let mut image = vec![0u8; scan_width as usize * LAYERS];
+    let mut aggregator = Aggregator::new(scan_width as usize);
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
@@ -85,8 +93,8 @@ fn ouster_pcd_converter<const LAYERS: usize>(
                 let val = (distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
-                let col = (polar_point.azimuth / (PI * 2.) * (SCAN_WIDTH) as f32) as usize
-                    % SCAN_WIDTH as usize;
+                let col = (polar_point.azimuth / (PI * 2.) * scan_width as f32) as usize
+                    % scan_width as usize;
                 image[(idx % LAYERS) * 1024 + col] = val;
             }
 
@@ -96,7 +104,7 @@ fn ouster_pcd_converter<const LAYERS: usize>(
     let file = std::fs::File::create("out.png")?;
     image::png::PngEncoder::new(file).write_image(
         &image,
-        SCAN_WIDTH as _,
+        scan_width as _,
         LAYERS as _,
         image::ColorType::L8,
     )?;
@@ -105,6 +113,8 @@ fn ouster_pcd_converter<const LAYERS: usize>(
     std::fs::write(target, buf)?;
 
     println!("Min {min}, Max {max}");
+
+    println!("Statistics {:?}", aggregator.get_statistics());
     Ok(())
 }
 

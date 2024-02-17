@@ -49,8 +49,9 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             measurements_per_rotation,
             entries: [entry.clone(), entry],
             tmp: Default::default(),
-            // +1 is to detect if more than the expected number of Packagers enters
-            completion_historgram: vec![Saturating(0); required_packets + 1],
+            // +2 is to detect if more than the expected number of Packagers enters
+            // Example required_packages=2 [none, one_package, two_packages, more]
+            completion_historgram: vec![Saturating(0); required_packets + 2],
             dropped_frames: Saturating(0),
             cur_measurement: Default::default(),
         }
@@ -103,11 +104,10 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         if self.cur_measurement < self.tmp.header.frame_id {
             self.entries.reverse();
             if self.entries[0].complete != 0 {
+                let last_index = self.completion_historgram.len() - 1;
                 self.completion_historgram[0] +=
                     (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
-                self.completion_historgram[self.entries[0]
-                    .complete
-                    .min(self.entries[0].complete_buf.len())] += 1;
+                self.completion_historgram[self.entries[0].complete.min(last_index)] += 1;
             }
 
             self.entries[0].complete = 1;
@@ -118,12 +118,11 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             let entry_index = self.cur_measurement - self.tmp.header.frame_id;
             if let Some(entry) = self.entries.get_mut(entry_index as usize) {
                 std::mem::swap(&mut entry.complete_buf[idx], &mut self.tmp);
-
-                if entry.complete + 1 < self.measurements_per_rotation / COLUMNS {
-                    entry.complete += 1;
-                    None
-                } else {
+                entry.complete += 1;
+                if entry.complete == self.measurements_per_rotation / COLUMNS {
                     Some(CompleteData(&entry.complete_buf))
+                } else {
+                    None
                 }
             } else {
                 self.dropped_frames += 1;
