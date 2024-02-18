@@ -5,6 +5,7 @@ use crate::{OusterConfig, OusterPacket};
 #[derive(Clone)]
 struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize> {
     complete_buf: Box<[Box<OusterPacket<COLUMNS, LAYERS>>]>,
+    missing_frame_histogram: u128,
     complete: usize,
 }
 
@@ -14,6 +15,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> AggregatorEntry<COLUMNS, LAYERS>
             complete_buf: (0..required_packets)
                 .map(|_| Default::default())
                 .collect::<Box<_>>(),
+            missing_frame_histogram: 0,
             complete: Default::default(),
         }
     }
@@ -25,6 +27,7 @@ pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize> {
     entries: [AggregatorEntry<COLUMNS, LAYERS>; 2],
     tmp: Box<OusterPacket<COLUMNS, LAYERS>>,
     completion_historgram: Vec<Saturating<u32>>,
+    missing_packets: Vec<Saturating<u32>>,
     dropped_frames: Saturating<u32>,
     cur_measurement: u16,
 }
@@ -39,6 +42,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Default for Aggregator<COLUMNS, 
 pub struct AggregatorStatistics {
     pub completion_historgram: Vec<u32>,
     pub dropped_frames: u32,
+    pub missing_packets: Vec<u32>,
 }
 
 impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
@@ -52,6 +56,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             // +2 is to detect if more than the expected number of Packagers enters
             // Example required_packages=2 [none, one_package, two_packages, more]
             completion_historgram: vec![Saturating(0); required_packets + 2],
+            missing_packets: vec![Saturating(0); required_packets],
             dropped_frames: Saturating(0),
             cur_measurement: Default::default(),
         }
@@ -72,6 +77,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         AggregatorStatistics {
             completion_historgram: self.get_histogram(),
             dropped_frames: self.dropped_frames.0,
+            missing_packets: self.missing_packets.iter().map(|x| x.0).collect::<Vec<_>>(),
         }
     }
 
@@ -108,7 +114,16 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
                 self.completion_historgram[0] +=
                     (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
                 self.completion_historgram[self.entries[0].complete.min(last_index)] += 1;
+
+                let mut hist = self.entries[0].missing_frame_histogram;
+                for x in 0..(self.measurements_per_rotation / COLUMNS) {
+                    if hist & 1 == 0 {
+                        self.missing_packets[x] += 1;
+                    }
+                    hist >>= 1;
+                }
             }
+            self.entries[0].missing_frame_histogram = 1 << idx;
 
             self.entries[0].complete = 1;
             self.cur_measurement = self.tmp.header.frame_id;
@@ -119,6 +134,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
             if let Some(entry) = self.entries.get_mut(entry_index as usize) {
                 std::mem::swap(&mut entry.complete_buf[idx], &mut self.tmp);
                 entry.complete += 1;
+                entry.missing_frame_histogram |= 1 << idx;
                 if entry.complete == self.measurements_per_rotation / COLUMNS {
                     Some(CompleteData(&entry.complete_buf))
                 } else {
