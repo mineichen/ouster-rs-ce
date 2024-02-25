@@ -89,13 +89,16 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         self.process_tmp()
     }
 
-    pub async fn put_data<TFut: Future<Output = std::io::Result<()>>>(
-        &mut self,
-        operator: impl FnOnce(&mut OusterPacket<COLUMNS, LAYERS>) -> TFut,
-    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, LAYERS>>> {
-        operator(self.tmp.as_mut()).await?;
-        Ok(self.process_tmp())
+    pub fn next_buffer(&mut self) -> &mut [u8] {
+        let tmp: &mut OusterPacket<COLUMNS, LAYERS> = &mut self.tmp;
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                std::ptr::from_mut(tmp) as *mut u8,
+                std::mem::size_of::<OusterPacket<COLUMNS, LAYERS>>(),
+            )
+        }
     }
+
     pub fn put_data_sync(
         &mut self,
         operator: impl FnOnce(&mut OusterPacket<COLUMNS, LAYERS>) -> std::io::Result<()>,
@@ -104,7 +107,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Aggregator<COLUMNS, LAYERS> {
         Ok(self.process_tmp())
     }
 
-    fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, LAYERS>> {
+    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, LAYERS>> {
         let idx = self.tmp.columns[0].channels_header.measurement_id as usize / 16;
 
         if self.cur_measurement < self.tmp.header.frame_id {
