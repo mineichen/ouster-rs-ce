@@ -86,7 +86,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
             continue;
         }
         let lidar_packet = OusterPacket::<TProfile>::from_maybe_unaligned(slice)?;
-        if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
+        if let Some(complete_buf) = aggregator.put_data_value(lidar_packet) {
             if skip_complete > 0 {
                 skip_complete -= 1;
                 continue;

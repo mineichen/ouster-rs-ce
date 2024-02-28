@@ -2,7 +2,6 @@ use std::num::Saturating;
 
 use crate::{profile::Profile, OusterConfig, OusterPacket, PointInfos};
 
-#[derive(Clone)]
 struct AggregatorEntry<TProfile: Profile> {
     complete_buf: Box<[Box<OusterPacket<TProfile>>]>,
     missing_frame_histogram: u128,
@@ -49,9 +48,10 @@ impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn new(measurements_per_rotation: usize) -> Self {
         let required_packets = measurements_per_rotation / TProfile::COLUMNS;
         let entry = AggregatorEntry::new(required_packets);
+        let entry2 = AggregatorEntry::new(required_packets);
         Self {
             measurements_per_rotation,
-            entries: [entry.clone(), entry],
+            entries: [entry, entry2],
             tmp: Default::default(),
             // +2 is to detect if more than the expected number of Packagers enters
             // Example required_packages=2 [none, one_package, two_packages, more]
