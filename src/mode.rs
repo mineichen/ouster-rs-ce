@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::{DualChannel, LowDataChannel, SingleChannel};
 
-pub trait Mode: Clone + Copy {
+pub trait Mode: Clone + Copy + Send + Sync + 'static {
     type Array<T>: AsRef<[T]>;
     type Channel: Default + Copy + Debug + PointInfos + Send + Sync + 'static;
 }
