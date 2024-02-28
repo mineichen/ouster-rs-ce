@@ -34,7 +34,7 @@ pub struct LidarDataFormat {
     pub udp_profile_lidar: LidarProfile,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 #[non_exhaustive]
 pub enum LidarProfile {
     SingleReturn,
