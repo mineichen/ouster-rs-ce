@@ -1,15 +1,18 @@
-use image::ImageEncoder;
+use image::{ImageEncoder, Luma};
+use imageproc::contours::Contour;
 use pcap::Capture;
 use pcd_rs::{DataKind, PcdSerialize, WriterInit};
 use std::{f32::consts::PI, io::Cursor, path::PathBuf};
 
-use ouster_rs_ce::{Aggregator, CartesianIterator, OusterConfig, OusterPacket};
+use ouster_rs_ce::{
+    Aggregator, CartesianIterator, DualMode, Mode, OusterConfig, OusterPacket, SingleMode,
+};
 
 const UDP_HEADER_SIZE: usize = 42;
 
 #[test]
 fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<64>(
+    ouster_pcd_converter::<64, DualMode<16, 128>>(
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903.json",
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903-000.pcap",
     )
@@ -17,7 +20,7 @@ fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128>(
+    ouster_pcd_converter::<128, DualMode<16, 128>>(
         "OS-0-128_v3.0.1_1024x10_20230510_134250.json",
         "OS-0-128_v3.0.1_1024x10_20230510_134250-000.pcap",
     )
@@ -25,20 +28,33 @@ fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_2047() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128>(
+    ouster_pcd_converter::<128, DualMode<16, 128>>(
         "2023122_2047_OS-0-128_122313000118.json",
         "2023122_2047_OS-0-128_122313000118.pcap",
     )
 }
-
-fn ouster_pcd_converter<const LAYERS: usize>(
+#[test]
+fn ouster_pcd_128rows_18_feb() -> Result<(), Box<dyn std::error::Error>> {
+    ouster_pcd_converter::<128, DualMode<16, 128>>(
+        "20240218_1622_OS-0-128_122403000369.json",
+        "20240218_1622_OS-0-128_122403000369.pcap",
+    )
+}
+#[test]
+fn ouster_pcd_128_single() -> Result<(), Box<dyn std::error::Error>> {
+    ouster_pcd_converter::<128, SingleMode<16, 128>>(
+        "single_20240218_1625_OS-0-128_122403000369.json",
+        "single_20240218_1625_OS-0-128_122403000369.pcap",
+    )
+}
+fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
     test_json_path: &str,
     test_pcap_file: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Load pcap file
     let home = PathBuf::from(env!("HOME"));
     let test_files = home.join("Downloads");
-    let target = home.join("demo.pcd");
+    let target = test_files.join("demo.pcd");
 
     let data = std::fs::read(test_files.join(test_json_path))?;
     let config: OusterConfig = serde_json::from_slice(&data)?;
@@ -47,7 +63,9 @@ fn ouster_pcd_converter<const LAYERS: usize>(
 
     let mut min = f32::MAX;
     let mut max = f32::MIN;
-    let mut skip_complete = 100000000;
+
+    let mut redefinitions = 0;
+    let mut skip_complete = 10;
     let scan_width: u16 = config.config_params.lidar_mode.horizontal_resolution();
 
     //const CAPTURE_POINTS: usize = 70974464;
@@ -67,10 +85,10 @@ fn ouster_pcd_converter<const LAYERS: usize>(
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
-        if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS>>() {
+        if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS, TMode>>() {
             continue;
         }
-        let lidar_packet = OusterPacket::<16, LAYERS>::from_maybe_unaligned(slice)?;
+        let lidar_packet = OusterPacket::<16, LAYERS, TMode>::from_maybe_unaligned(slice)?;
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
             if skip_complete > 0 {
                 skip_complete -= 1;
@@ -78,6 +96,7 @@ fn ouster_pcd_converter<const LAYERS: usize>(
             }
 
             let iter = CartesianIterator::from_config(&config);
+
             for (idx, (distance, polar_point)) in
                 complete_buf.iter_points_flat(&config).zip(iter).enumerate()
             {
@@ -88,28 +107,49 @@ fn ouster_pcd_converter<const LAYERS: usize>(
                 let z = z.min(20_000.).max(-20000.);
                 pcd_writer.push(&PcdPoint { x, y, z })?;
 
-                const FACTOR: f32 = 0.01;
+                //const FACTOR: f32 = 0.03;
+                //const OFFSET: f32 = -80.;
+                const FACTOR: f32 = 255. / 0.000001;
                 const OFFSET: f32 = 0.;
                 let val = (distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
-                let col = (polar_point.azimuth / (PI * 2.) * scan_width as f32) as usize
+                let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)
+                    + scan_width as f32) as usize
                     % scan_width as usize;
-                image[(idx % LAYERS) * 1024 + col] = val;
+                let image_idx = (idx % LAYERS) * (scan_width as usize) + col;
+                image[image_idx] = val;
             }
+            let mut dist = complete_buf.iter_points_flat(&config).collect::<Vec<_>>();
+            dist.sort();
+            println!(
+                "\n50%: {}, 90%: {}",
+                dist[dist.len() / 2],
+                dist[dist.len() / 10 * 9]
+            );
 
             break;
         }
     }
-    let file = std::fs::File::create("out.png")?;
-    image::png::PngEncoder::new(file).write_image(
-        &image,
-        scan_width as _,
-        LAYERS as _,
-        image::ColorType::L8,
-    )?;
+    println!("\n Redefinitions: {redefinitions}");
+    let image = image::GrayImage::from_vec(scan_width as _, LAYERS as _, image).unwrap();
+    let median = imageproc::filter::median_filter(&image, 2, 2);
+    //let median = imageproc::filter::sharpen3x3(&median);
+    let contours = imageproc::contours::find_contours::<i32>(&median); //Vec::<Contour<i32>>::new(); //
+    for contour in contours {
+        for p in contour.points {
+            //sharp[(p.x as _, p.y as _)] = Luma([255]);
+        }
+    }
+    image
+        .save_with_format("out.png", image::ImageFormat::Png)
+        .unwrap();
+    median
+        .save_with_format("median.png", image::ImageFormat::Png)
+        .unwrap();
 
     pcd_writer.finish()?;
+    println!("Write PCD to {:?}", target);
     std::fs::write(target, buf)?;
 
     println!("Min {min}, Max {max}");

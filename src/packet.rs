@@ -1,11 +1,19 @@
-pub type Dual128OusterPacket = OusterPacket<16, 128>;
-pub type Dual64OusterPacket = OusterPacket<16, 64>;
+use std::marker::PhantomData;
+
+use crate::{
+    mode::{DualMode, Mode},
+    PointInfo, PointInfos, SingleMode,
+};
+
+pub type Dual128OusterPacket = OusterPacket<16, 128, DualMode<16, 128>>;
+pub type Single128OusterPacket = OusterPacket<16, 128, SingleMode<16, 128>>;
+pub type Dual64OusterPacket = OusterPacket<16, 64, DualMode<16, 128>>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct OusterPacket<const TCOLUMNS: usize, const TCHANNELS: usize> {
+pub struct OusterPacket<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode> {
     pub header: OusterPacketHeader,
-    pub columns: [Column<TCHANNELS>; TCOLUMNS],
+    pub columns: [Column<TLAYERS, TMode>; TCOLUMNS],
     pub reserved: [u32; 8],
 }
 
@@ -26,7 +34,9 @@ pub struct OusterPacketHeader {
     _reserved_2: [u32; 3],
 }
 
-impl<const TCOLUMNS: usize, const TCHANNELS: usize> Default for OusterPacket<TCOLUMNS, TCHANNELS> {
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode> Default
+    for OusterPacket<TCOLUMNS, TLAYERS, TMode>
+{
     fn default() -> Self {
         Self {
             header: Default::default(),
@@ -35,7 +45,9 @@ impl<const TCOLUMNS: usize, const TCHANNELS: usize> Default for OusterPacket<TCO
         }
     }
 }
-impl<const TCOLUMNS: usize, const TCHANNELS: usize> OusterPacket<TCOLUMNS, TCHANNELS> {
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode>
+    OusterPacket<TCOLUMNS, TLAYERS, TMode>
+{
     // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
     // mut allows to implement this in the future without breaking changes
     #[cfg(target_endian = "little")]
@@ -74,16 +86,18 @@ pub struct SizeMismatchError {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Column<const TCHANNELS: usize> {
+pub struct Column<const TLAYERS: usize, TMode: Mode> {
     pub channels_header: ChannelsHeader,
-    pub channels: [Channel; TCHANNELS],
+    pub channels: [TMode::Channel; TLAYERS],
+    phantom: PhantomData<TMode>,
 }
 
-impl<const TCHANNELS: usize> Default for Column<TCHANNELS> {
+impl<const TLAYERS: usize, TMode: Mode> Default for Column<TLAYERS, TMode> {
     fn default() -> Self {
         Self {
             channels_header: ChannelsHeader::default(),
-            channels: [Channel::default(); TCHANNELS],
+            channels: [TMode::Channel::default(); TLAYERS],
+            phantom: PhantomData,
         }
     }
 }
@@ -106,13 +120,54 @@ impl ChannelsHeader {
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
-pub struct Channel {
+pub struct DualChannel {
     pub info_ret1: RangeData,
     pub info_ret2: RangeData,
     pub signal_ret_1: u16,
     pub signal_ret_2: u16,
     pub nir: u16,
     _reserved: u16,
+}
+
+impl PointInfos for DualChannel {
+    fn get_primary_infos_uncorrected(&self) -> crate::PointInfo {
+        PointInfo {
+            distance: self.info_ret1.get_distance(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SingleChannel {
+    pub range_and_reserved: u32,
+    pub reflectifity: u8,
+    _reserved: u8,
+    pub signal: u16,
+    pub nir: u16,
+    _reserved2: u16,
+}
+
+impl PointInfos for SingleChannel {
+    fn get_primary_infos_uncorrected(&self) -> crate::PointInfo {
+        PointInfo {
+            distance: self.range_and_reserved & ((1 << 20) - 1),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LowDataChannel {
+    pub data: u32,
+}
+
+impl PointInfos for LowDataChannel {
+    fn get_primary_infos_uncorrected(&self) -> crate::PointInfo {
+        PointInfo {
+            distance: (self.data & ((1 << 17) - 1)) * 8,
+        }
+    }
 }
 
 #[repr(C)]
@@ -135,8 +190,10 @@ mod tests {
     fn assert_correct_structsize() {
         assert_eq!(256 / 8, std::mem::size_of::<OusterPacketHeader>());
         assert_eq!(96 / 8, std::mem::size_of::<ChannelsHeader>());
-        assert_eq!(128 / 8, std::mem::size_of::<super::Channel>());
+        assert_eq!(128 / 8, std::mem::size_of::<super::DualChannel>());
+        assert_eq!(96 / 8, std::mem::size_of::<super::SingleChannel>());
         assert_eq!(32 / 8, std::mem::size_of::<super::RangeData>());
         assert_eq!(33024, std::mem::size_of::<Dual128OusterPacket>());
+        assert_eq!(24832, std::mem::size_of::<Single128OusterPacket>());
     }
 }
