@@ -29,7 +29,7 @@ pub struct LidarDataFormat {
     pub columns_per_packet: u8,
     pub pixels_per_column: u8,
     pub columns_per_frame: u16,
-    pub pixel_shift_per_row: Box<[i8]>,
+    pub pixel_shift_by_row: Box<[i8]>,
     pub column_window: (u16, u16),
     pub udp_profile_lidar: LidarProfile,
 }
