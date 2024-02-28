@@ -5,7 +5,7 @@ use crate::{DualChannel, LowDataChannel, SingleChannel};
 pub trait Profile: Clone + Copy + Send + Sync + 'static {
     type Array<T>: AsRef<[T]>;
     type Channel: Default + Copy + Debug + PointInfos + Send + Sync + 'static;
-    type Channels: AsRef<[Self::Channel]> + Copy + Debug;
+    type Channels: AsRef<[Self::Channel]> + Copy + Debug + Send + Sync + 'static;
 
     const COLUMNS: usize;
     const LAYERS: usize;
