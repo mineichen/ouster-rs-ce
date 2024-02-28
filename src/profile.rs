@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::{DualChannel, LowDataChannel, SingleChannel};
 
-pub trait Mode: Clone + Copy + Send + Sync + 'static {
+pub trait Profile: Clone + Copy + Send + Sync + 'static {
     type Array<T>: AsRef<[T]>;
     type Channel: Default + Copy + Debug + PointInfos + Send + Sync + 'static;
 }
@@ -16,22 +16,22 @@ pub struct PointInfo {
 }
 
 #[derive(Clone, Copy)]
-pub struct DualMode<const COLUMNS: usize, const LAYERS: usize>;
-impl<const COLUMNS: usize, const LAYERS: usize> Mode for DualMode<COLUMNS, LAYERS> {
+pub struct DualProfile<const COLUMNS: usize, const LAYERS: usize>;
+impl<const COLUMNS: usize, const LAYERS: usize> Profile for DualProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];
     type Channel = DualChannel;
 }
 
 #[derive(Clone, Copy)]
-pub struct SingleMode<const COLUMNS: usize, const LAYERS: usize>;
-impl<const COLUMNS: usize, const LAYERS: usize> Mode for SingleMode<COLUMNS, LAYERS> {
+pub struct SingleProfile<const COLUMNS: usize, const LAYERS: usize>;
+impl<const COLUMNS: usize, const LAYERS: usize> Profile for SingleProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];
     type Channel = SingleChannel;
 }
 
 #[derive(Clone, Copy)]
-pub struct LowDataMode<const COLUMNS: usize, const LAYERS: usize>;
-impl<const COLUMNS: usize, const LAYERS: usize> Mode for LowDataMode<COLUMNS, LAYERS> {
+pub struct LowDataProfile<const COLUMNS: usize, const LAYERS: usize>;
+impl<const COLUMNS: usize, const LAYERS: usize> Profile for LowDataProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];
     type Channel = LowDataChannel;
 }

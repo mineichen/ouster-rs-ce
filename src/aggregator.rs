@@ -1,15 +1,15 @@
 use std::num::Saturating;
 
-use crate::{mode::Mode, OusterConfig, OusterPacket, PointInfos};
+use crate::{profile::Profile, OusterConfig, OusterPacket, PointInfos};
 
 #[derive(Clone)]
-struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> {
+struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> {
     complete_buf: Box<[Box<OusterPacket<COLUMNS, LAYERS, TProfile>>]>,
     missing_frame_histogram: u128,
     complete: usize,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
     AggregatorEntry<COLUMNS, LAYERS, TProfile>
 {
     fn new(required_packets: usize) -> Self {
@@ -24,7 +24,7 @@ impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
 }
 
 /// Columns per package (usually 16)
-pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> {
+pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> {
     measurements_per_rotation: usize,
     entries: [AggregatorEntry<COLUMNS, LAYERS, TProfile>; 2],
     tmp: Box<OusterPacket<COLUMNS, LAYERS, TProfile>>,
@@ -34,7 +34,7 @@ pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
     cur_measurement: u16,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> Default
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> Default
     for Aggregator<COLUMNS, LAYERS, TProfile>
 {
     fn default() -> Self {
@@ -49,7 +49,7 @@ pub struct AggregatorStatistics {
     pub missing_packets: Vec<u32>,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
     Aggregator<COLUMNS, LAYERS, TProfile>
 {
     pub fn new(measurements_per_rotation: usize) -> Self {
@@ -157,11 +157,11 @@ impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
     }
 }
 
-pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>(
+pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>(
     &'a [Box<OusterPacket<COLUMNS, LAYERS, TProfile>>],
 );
 
-impl<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+impl<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
     CompleteData<'a, COLUMNS, LAYERS, TProfile>
 {
     pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, LAYERS, TProfile>> {

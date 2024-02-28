@@ -3,14 +3,14 @@ use pcd_rs::{DataKind, PcdSerialize, WriterInit};
 use std::{f32::consts::PI, io::Cursor, path::PathBuf};
 
 use ouster_rs_ce::{
-    Aggregator, CartesianIterator, DualMode, Mode, OusterConfig, OusterPacket, SingleMode,
+    Aggregator, CartesianIterator, DualProfile, OusterConfig, OusterPacket, Profile, SingleProfile,
 };
 
 const UDP_HEADER_SIZE: usize = 42;
 
 #[test]
 fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<64, DualMode<16, 128>>(
+    ouster_pcd_converter::<64, DualProfile<16, 128>>(
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903.json",
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903-000.pcap",
     )
@@ -18,7 +18,7 @@ fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualMode<16, 128>>(
+    ouster_pcd_converter::<128, DualProfile<16, 128>>(
         "OS-0-128_v3.0.1_1024x10_20230510_134250.json",
         "OS-0-128_v3.0.1_1024x10_20230510_134250-000.pcap",
     )
@@ -26,26 +26,26 @@ fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_2047() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualMode<16, 128>>(
+    ouster_pcd_converter::<128, DualProfile<16, 128>>(
         "2023122_2047_OS-0-128_122313000118.json",
         "2023122_2047_OS-0-128_122313000118.pcap",
     )
 }
 #[test]
 fn ouster_pcd_128rows_18_feb() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualMode<16, 128>>(
+    ouster_pcd_converter::<128, DualProfile<16, 128>>(
         "20240218_1622_OS-0-128_122403000369.json",
         "20240218_1622_OS-0-128_122403000369.pcap",
     )
 }
 #[test]
 fn ouster_pcd_128_single() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, SingleMode<16, 128>>(
+    ouster_pcd_converter::<128, SingleProfile<16, 128>>(
         "single_20240218_1625_OS-0-128_122403000369.json",
         "single_20240218_1625_OS-0-128_122403000369.pcap",
     )
 }
-fn ouster_pcd_converter<const LAYERS: usize, TProfile: Mode>(
+fn ouster_pcd_converter<const LAYERS: usize, TProfile: Profile>(
     test_json_path: &str,
     test_pcap_file: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {

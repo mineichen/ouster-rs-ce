@@ -1,17 +1,17 @@
 use std::marker::PhantomData;
 
 use crate::{
-    mode::{DualMode, Mode},
-    PointInfo, PointInfos, SingleMode,
+    profile::{DualProfile, Profile},
+    PointInfo, PointInfos, SingleProfile,
 };
 
-pub type Dual128OusterPacket = OusterPacket<16, 128, DualMode<16, 128>>;
-pub type Single128OusterPacket = OusterPacket<16, 128, SingleMode<16, 128>>;
-pub type Dual64OusterPacket = OusterPacket<16, 64, DualMode<16, 128>>;
+pub type Dual128OusterPacket = OusterPacket<16, 128, DualProfile<16, 128>>;
+pub type Single128OusterPacket = OusterPacket<16, 128, SingleProfile<16, 128>>;
+pub type Dual64OusterPacket = OusterPacket<16, 64, DualProfile<16, 128>>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct OusterPacket<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode> {
+pub struct OusterPacket<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Profile> {
     pub header: OusterPacketHeader,
     pub columns: [Column<TLAYERS, TProfile>; TCOLUMNS],
     pub reserved: [u32; 8],
@@ -34,7 +34,7 @@ pub struct OusterPacketHeader {
     _reserved_2: [u32; 3],
 }
 
-impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode> Default
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Profile> Default
     for OusterPacket<TCOLUMNS, TLAYERS, TProfile>
 {
     fn default() -> Self {
@@ -45,7 +45,7 @@ impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode> Default
         }
     }
 }
-impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode>
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Profile>
     OusterPacket<TCOLUMNS, TLAYERS, TProfile>
 {
     // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
@@ -86,13 +86,13 @@ pub struct SizeMismatchError {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Column<const TLAYERS: usize, TProfile: Mode> {
+pub struct Column<const TLAYERS: usize, TProfile: Profile> {
     pub channels_header: ChannelsHeader,
     pub channels: [TProfile::Channel; TLAYERS],
     phantom: PhantomData<TProfile>,
 }
 
-impl<const TLAYERS: usize, TProfile: Mode> Default for Column<TLAYERS, TProfile> {
+impl<const TLAYERS: usize, TProfile: Profile> Default for Column<TLAYERS, TProfile> {
     fn default() -> Self {
         Self {
             channels_header: ChannelsHeader::default(),
