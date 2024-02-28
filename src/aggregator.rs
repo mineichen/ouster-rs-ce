@@ -1,6 +1,8 @@
 use std::num::Saturating;
 
-use crate::{profile::Profile, OusterConfig, OusterPacket, PointInfos};
+use crate::{
+    profile::Profile, OusterConfig, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo,
+};
 
 struct AggregatorEntry<TProfile: Profile> {
     complete_buf: Box<[Box<OusterPacket<TProfile>>]>,
@@ -158,7 +160,10 @@ impl<'a, TProfile: Profile> CompleteData<'a, TProfile> {
         self.0.iter().map(AsRef::as_ref)
     }
 
-    pub fn iter_points_flat(&self, config: &OusterConfig) -> impl Iterator<Item = u32> + '_ {
+    pub fn iter_infos(
+        &self,
+        config: &OusterConfig,
+    ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + '_ {
         let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
         let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
         let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
@@ -169,7 +174,25 @@ impl<'a, TProfile: Profile> CompleteData<'a, TProfile> {
                     .channels
                     .as_ref()
                     .iter()
-                    .map(move |point| point.get_primary_infos_uncorrected().distance - nvec)
+                    .map(move |point| point.get_infos(nvec))
+            })
+    }
+
+    pub fn iter_infos_primary(
+        &self,
+        config: &OusterConfig,
+    ) -> impl Iterator<Item = PrimaryPointInfo> + '_ {
+        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
+        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
+        let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
+        self.iter()
+            .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
+            .flat_map(move |column| {
+                column
+                    .channels
+                    .as_ref()
+                    .iter()
+                    .map(move |point| point.get_primary_infos(nvec))
             })
     }
 }

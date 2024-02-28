@@ -16,11 +16,25 @@ pub trait Profile: Copy + Send + Sync + 'static {
 }
 
 pub trait PointInfos {
-    fn get_primary_infos_uncorrected(&self) -> PointInfo;
+    type Infos: AsRef<[PointChannelInfo]>;
+    fn get_primary_infos(&self, n_vec: u32) -> PrimaryPointInfo;
+    fn get_infos(&self, n_vec: u32) -> PointInfo<Self::Infos>;
 }
 
-pub struct PointInfo {
-    pub distance: u32,
+pub struct PointInfo<T> {
+    pub channel_info: T,
+    pub nir: u8,
+}
+
+pub struct PointChannelInfo {
+    pub distance: u16,
+    pub reflectifity: u8,
+}
+
+pub struct PrimaryPointInfo {
+    pub distance: u16,
+    pub reflectifity: u8,
+    pub nir: u8,
 }
 
 #[derive(Clone, Copy)]

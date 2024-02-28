@@ -94,10 +94,12 @@ fn ouster_pcd_converter<TProfile: Profile>(
 
             let iter = CartesianIterator::from_config(&config);
 
-            for (idx, (distance, polar_point)) in
-                complete_buf.iter_points_flat(&config).zip(iter).enumerate()
+            for (idx, (p, polar_point)) in complete_buf
+                .iter_infos_primary(&config)
+                .zip(iter)
+                .enumerate()
             {
-                let (x, y, z) = polar_point.calc_xyz(distance as f32);
+                let (x, y, z) = polar_point.calc_xyz(p.distance as f32);
 
                 let x = x.min(20_000.).max(-20000.);
                 let y = y.min(20_000.).max(-20000.);
@@ -108,7 +110,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 //const OFFSET: f32 = -80.;
                 const FACTOR: f32 = 255. / 0.000001;
                 const OFFSET: f32 = 0.;
-                let val = (distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
+                let val = (p.distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
                 let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)
@@ -117,7 +119,12 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 let image_idx = (idx % TProfile::LAYERS) * (scan_width as usize) + col;
                 image[image_idx] = val;
             }
-            let mut dist = complete_buf.iter_points_flat(&config).collect::<Vec<_>>();
+            let mut dist = complete_buf
+                .iter_infos_primary(&config)
+                .map(|x| x.distance)
+                .collect::<Vec<_>>();
+            //complete_buf.iter_infos(&config).map(|x| x.channel_info.as_ref().iter())
+
             dist.sort();
             println!(
                 "\n50%: {}, 90%: {}",
