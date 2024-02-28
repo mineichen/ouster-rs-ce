@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,7 +26,58 @@ impl PolarPoint {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LidarDataFormat {
+    pub columns_per_packet: u8,
     pub pixels_per_column: u8,
+    pub columns_per_frame: u16,
+    pub pixel_shift_per_row: Box<[i8]>,
+    pub column_window: (u16, u16),
+    pub udp_profile_lidar: LidarProfile,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum LidarProfile {
+    SingleReturn,
+    DualReturn,
+    LowData,
+}
+
+impl LidarProfile {}
+
+impl Serialize for LidarProfile {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(match self {
+            LidarProfile::SingleReturn => "RNG19_RFL8_SIG16_NIR16",
+            LidarProfile::DualReturn => "RNG19_RFL8_SIG16_NIR16_DUAL",
+            LidarProfile::LowData => "RNG15_RFL8_NIR8",
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for LidarProfile {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let x = <&str>::deserialize(deserializer)?;
+        Self::from_str(x).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+
+impl FromStr for LidarProfile {
+    type Err = Box<dyn std::error::Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "RNG19_RFL8_SIG16_NIR16" => Ok(Self::SingleReturn),
+            "RNG15_RFL8_NIR8" => Ok(Self::LowData),
+            "RNG19_RFL8_SIG16_NIR16_DUAL" => Ok(Self::DualReturn),
+            s => Err(format!("Can't parse '{}'into LidarProfile", s).into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,7 +106,7 @@ pub enum LidarMode {
 }
 
 impl LidarMode {
-    pub fn horizontal_resolution(&self) -> u16 {
+    fn horizontal_resolution(&self) -> u16 {
         match self {
             LidarMode::Mode512x10 | LidarMode::Mode512x20 => 512,
             LidarMode::Mode1024x10 | LidarMode::Mode1024x20 => 1024,

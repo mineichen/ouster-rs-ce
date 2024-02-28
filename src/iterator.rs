@@ -16,7 +16,7 @@ impl CartesianIterator<Arc<[(f32, f32)]>> {
         let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
         Self::new(
             azimuth_roh_lut,
-            config.config_params.lidar_mode.horizontal_resolution(),
+            config.lidar_data_format.columns_per_frame,
             offset_x,
             offset_z,
         )

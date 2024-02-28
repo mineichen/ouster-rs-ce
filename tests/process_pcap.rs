@@ -66,7 +66,7 @@ fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
 
     let mut redefinitions = 0;
     let mut skip_complete = 10;
-    let scan_width: u16 = config.config_params.lidar_mode.horizontal_resolution();
+    let scan_width: u16 = config.lidar_data_format.columns_per_frame;
 
     //const CAPTURE_POINTS: usize = 70974464;
     const CAPTURE_POINTS: usize = 151072;
