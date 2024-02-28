@@ -106,7 +106,7 @@ pub enum LidarMode {
 }
 
 impl LidarMode {
-    fn horizontal_resolution(&self) -> u16 {
+    pub fn horizontal_resolution(&self) -> u16 {
         match self {
             LidarMode::Mode512x10 | LidarMode::Mode512x20 => 512,
             LidarMode::Mode1024x10 | LidarMode::Mode1024x20 => 1024,

@@ -1,5 +1,3 @@
-use image::{ImageEncoder, Luma};
-use imageproc::contours::Contour;
 use pcap::Capture;
 use pcd_rs::{DataKind, PcdSerialize, WriterInit};
 use std::{f32::consts::PI, io::Cursor, path::PathBuf};
@@ -47,7 +45,7 @@ fn ouster_pcd_128_single() -> Result<(), Box<dyn std::error::Error>> {
         "single_20240218_1625_OS-0-128_122403000369.pcap",
     )
 }
-fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
+fn ouster_pcd_converter<const LAYERS: usize, TProfile: Mode>(
     test_json_path: &str,
     test_pcap_file: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -64,7 +62,6 @@ fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
     let mut min = f32::MAX;
     let mut max = f32::MIN;
 
-    let mut redefinitions = 0;
     let mut skip_complete = 10;
     let scan_width: u16 = config.lidar_data_format.columns_per_frame;
 
@@ -85,10 +82,10 @@ fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
-        if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS, TMode>>() {
+        if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS, TProfile>>() {
             continue;
         }
-        let lidar_packet = OusterPacket::<16, LAYERS, TMode>::from_maybe_unaligned(slice)?;
+        let lidar_packet = OusterPacket::<16, LAYERS, TProfile>::from_maybe_unaligned(slice)?;
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
             if skip_complete > 0 {
                 skip_complete -= 1;
@@ -131,16 +128,16 @@ fn ouster_pcd_converter<const LAYERS: usize, TMode: Mode>(
             break;
         }
     }
-    println!("\n Redefinitions: {redefinitions}");
     let image = image::GrayImage::from_vec(scan_width as _, LAYERS as _, image).unwrap();
     let median = imageproc::filter::median_filter(&image, 2, 2);
     //let median = imageproc::filter::sharpen3x3(&median);
-    let contours = imageproc::contours::find_contours::<i32>(&median); //Vec::<Contour<i32>>::new(); //
-    for contour in contours {
-        for p in contour.points {
-            //sharp[(p.x as _, p.y as _)] = Luma([255]);
-        }
-    }
+    // let contours = imageproc::contours::find_contours::<i32>(&median);
+    //Vec::<Contour<i32>>::new(); //
+    // for contour in contours {
+    //     for p in contour.points {
+    //         sharp[(p.x as _, p.y as _)] = Luma([255]);
+    //     }
+    // }
     image
         .save_with_format("out.png", image::ImageFormat::Png)
         .unwrap();

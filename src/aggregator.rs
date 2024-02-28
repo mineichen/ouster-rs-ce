@@ -1,16 +1,16 @@
-use std::{future::Future, num::Saturating};
+use std::num::Saturating;
 
-use crate::{mode::Mode, DualMode, OusterConfig, OusterPacket, PointInfos};
+use crate::{mode::Mode, OusterConfig, OusterPacket, PointInfos};
 
 #[derive(Clone)]
-struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> {
-    complete_buf: Box<[Box<OusterPacket<COLUMNS, LAYERS, TMode>>]>,
+struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> {
+    complete_buf: Box<[Box<OusterPacket<COLUMNS, LAYERS, TProfile>>]>,
     missing_frame_histogram: u128,
     complete: usize,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode>
-    AggregatorEntry<COLUMNS, LAYERS, TMode>
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+    AggregatorEntry<COLUMNS, LAYERS, TProfile>
 {
     fn new(required_packets: usize) -> Self {
         Self {
@@ -24,18 +24,18 @@ impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode>
 }
 
 /// Columns per package (usually 16)
-pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> {
+pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> {
     measurements_per_rotation: usize,
-    entries: [AggregatorEntry<COLUMNS, LAYERS, TMode>; 2],
-    tmp: Box<OusterPacket<COLUMNS, LAYERS, TMode>>,
+    entries: [AggregatorEntry<COLUMNS, LAYERS, TProfile>; 2],
+    tmp: Box<OusterPacket<COLUMNS, LAYERS, TProfile>>,
     completion_historgram: Vec<Saturating<u32>>,
     missing_packets: Vec<Saturating<u32>>,
     dropped_frames: Saturating<u32>,
     cur_measurement: u16,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> Default
-    for Aggregator<COLUMNS, LAYERS, TMode>
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode> Default
+    for Aggregator<COLUMNS, LAYERS, TProfile>
 {
     fn default() -> Self {
         Self::new(1024)
@@ -49,7 +49,9 @@ pub struct AggregatorStatistics {
     pub missing_packets: Vec<u32>,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> Aggregator<COLUMNS, LAYERS, TMode> {
+impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+    Aggregator<COLUMNS, LAYERS, TProfile>
+{
     pub fn new(measurements_per_rotation: usize) -> Self {
         let required_packets = measurements_per_rotation / COLUMNS;
         let entry = AggregatorEntry::new(required_packets);
@@ -87,31 +89,31 @@ impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> Aggregator<COLUMNS,
 
     pub fn put_data_value(
         &mut self,
-        data: OusterPacket<COLUMNS, LAYERS, TMode>,
-    ) -> Option<CompleteData<'_, COLUMNS, LAYERS, TMode>> {
+        data: OusterPacket<COLUMNS, LAYERS, TProfile>,
+    ) -> Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>> {
         *self.tmp.as_mut() = data;
         self.process_tmp()
     }
 
     pub fn next_buffer(&mut self) -> &mut [u8] {
-        let tmp: &mut OusterPacket<COLUMNS, LAYERS, TMode> = &mut self.tmp;
+        let tmp: &mut OusterPacket<COLUMNS, LAYERS, TProfile> = &mut self.tmp;
         unsafe {
             std::slice::from_raw_parts_mut(
                 std::ptr::from_mut(tmp) as *mut u8,
-                std::mem::size_of::<OusterPacket<COLUMNS, LAYERS, TMode>>(),
+                std::mem::size_of::<OusterPacket<COLUMNS, LAYERS, TProfile>>(),
             )
         }
     }
 
     pub fn put_data_sync(
         &mut self,
-        operator: impl FnOnce(&mut OusterPacket<COLUMNS, LAYERS, TMode>) -> std::io::Result<()>,
-    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, LAYERS, TMode>>> {
+        operator: impl FnOnce(&mut OusterPacket<COLUMNS, LAYERS, TProfile>) -> std::io::Result<()>,
+    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>>> {
         operator(self.tmp.as_mut())?;
         Ok(self.process_tmp())
     }
 
-    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, LAYERS, TMode>> {
+    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>> {
         let idx = self.tmp.columns[0].channels_header.measurement_id as usize / 16;
 
         if self.cur_measurement < self.tmp.header.frame_id {
@@ -155,14 +157,14 @@ impl<const COLUMNS: usize, const LAYERS: usize, TMode: Mode> Aggregator<COLUMNS,
     }
 }
 
-pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize, TMode: Mode>(
-    &'a [Box<OusterPacket<COLUMNS, LAYERS, TMode>>],
+pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>(
+    &'a [Box<OusterPacket<COLUMNS, LAYERS, TProfile>>],
 );
 
-impl<'a, const COLUMNS: usize, const LAYERS: usize, TMode: Mode>
-    CompleteData<'a, COLUMNS, LAYERS, TMode>
+impl<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Mode>
+    CompleteData<'a, COLUMNS, LAYERS, TProfile>
 {
-    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, LAYERS, TMode>> {
+    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, LAYERS, TProfile>> {
         self.0.iter().map(AsRef::as_ref)
     }
 
@@ -179,11 +181,6 @@ impl<'a, const COLUMNS: usize, const LAYERS: usize, TMode: Mode>
                     .map(move |point| point.get_primary_infos_uncorrected().distance - nvec)
             })
     }
-}
-
-/// Select number of copies for Reflectivity, usually 0 or 1
-struct ExtractPoint<const REFLECTIFITY: usize> {
-    reflectifity: [u8; REFLECTIFITY],
 }
 
 #[cfg(test)]

@@ -11,9 +11,9 @@ pub type Dual64OusterPacket = OusterPacket<16, 64, DualMode<16, 128>>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct OusterPacket<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode> {
+pub struct OusterPacket<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode> {
     pub header: OusterPacketHeader,
-    pub columns: [Column<TLAYERS, TMode>; TCOLUMNS],
+    pub columns: [Column<TLAYERS, TProfile>; TCOLUMNS],
     pub reserved: [u32; 8],
 }
 
@@ -34,8 +34,8 @@ pub struct OusterPacketHeader {
     _reserved_2: [u32; 3],
 }
 
-impl<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode> Default
-    for OusterPacket<TCOLUMNS, TLAYERS, TMode>
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode> Default
+    for OusterPacket<TCOLUMNS, TLAYERS, TProfile>
 {
     fn default() -> Self {
         Self {
@@ -45,8 +45,8 @@ impl<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode> Default
         }
     }
 }
-impl<const TCOLUMNS: usize, const TLAYERS: usize, TMode: Mode>
-    OusterPacket<TCOLUMNS, TLAYERS, TMode>
+impl<const TCOLUMNS: usize, const TLAYERS: usize, TProfile: Mode>
+    OusterPacket<TCOLUMNS, TLAYERS, TProfile>
 {
     // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
     // mut allows to implement this in the future without breaking changes
@@ -86,17 +86,17 @@ pub struct SizeMismatchError {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Column<const TLAYERS: usize, TMode: Mode> {
+pub struct Column<const TLAYERS: usize, TProfile: Mode> {
     pub channels_header: ChannelsHeader,
-    pub channels: [TMode::Channel; TLAYERS],
-    phantom: PhantomData<TMode>,
+    pub channels: [TProfile::Channel; TLAYERS],
+    phantom: PhantomData<TProfile>,
 }
 
-impl<const TLAYERS: usize, TMode: Mode> Default for Column<TLAYERS, TMode> {
+impl<const TLAYERS: usize, TProfile: Mode> Default for Column<TLAYERS, TProfile> {
     fn default() -> Self {
         Self {
             channels_header: ChannelsHeader::default(),
-            channels: [TMode::Channel::default(); TLAYERS],
+            channels: [TProfile::Channel::default(); TLAYERS],
             phantom: PhantomData,
         }
     }
