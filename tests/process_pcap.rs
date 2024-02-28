@@ -82,10 +82,10 @@ fn ouster_pcd_converter<TProfile: Profile>(
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
-        if slice.len() != std::mem::size_of::<OusterPacket<16, TProfile>>() {
+        if slice.len() != std::mem::size_of::<OusterPacket<TProfile>>() {
             continue;
         }
-        let lidar_packet = OusterPacket::<16, TProfile>::from_maybe_unaligned(slice)?;
+        let lidar_packet = OusterPacket::<TProfile>::from_maybe_unaligned(slice)?;
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
             if skip_complete > 0 {
                 skip_complete -= 1;

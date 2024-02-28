@@ -3,13 +3,13 @@ use std::num::Saturating;
 use crate::{profile::Profile, OusterConfig, OusterPacket, PointInfos};
 
 #[derive(Clone)]
-struct AggregatorEntry<const COLUMNS: usize, TProfile: Profile> {
-    complete_buf: Box<[Box<OusterPacket<COLUMNS, TProfile>>]>,
+struct AggregatorEntry<TProfile: Profile> {
+    complete_buf: Box<[Box<OusterPacket<TProfile>>]>,
     missing_frame_histogram: u128,
     complete: usize,
 }
 
-impl<const COLUMNS: usize, TProfile: Profile> AggregatorEntry<COLUMNS, TProfile> {
+impl<TProfile: Profile> AggregatorEntry<TProfile> {
     fn new(required_packets: usize) -> Self {
         Self {
             complete_buf: (0..required_packets)
@@ -22,17 +22,17 @@ impl<const COLUMNS: usize, TProfile: Profile> AggregatorEntry<COLUMNS, TProfile>
 }
 
 /// Columns per package (usually 16)
-pub struct Aggregator<const COLUMNS: usize, TProfile: Profile> {
+pub struct Aggregator<TProfile: Profile> {
     measurements_per_rotation: usize,
-    entries: [AggregatorEntry<COLUMNS, TProfile>; 2],
-    tmp: Box<OusterPacket<COLUMNS, TProfile>>,
+    entries: [AggregatorEntry<TProfile>; 2],
+    tmp: Box<OusterPacket<TProfile>>,
     completion_historgram: Vec<Saturating<u32>>,
     missing_packets: Vec<Saturating<u32>>,
     dropped_frames: Saturating<u32>,
     cur_measurement: u16,
 }
 
-impl<const COLUMNS: usize, TProfile: Profile> Default for Aggregator<COLUMNS, TProfile> {
+impl<TProfile: Profile> Default for Aggregator<TProfile> {
     fn default() -> Self {
         Self::new(1024)
     }
@@ -45,9 +45,9 @@ pub struct AggregatorStatistics {
     pub missing_packets: Vec<u32>,
 }
 
-impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
+impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn new(measurements_per_rotation: usize) -> Self {
-        let required_packets = measurements_per_rotation / COLUMNS;
+        let required_packets = measurements_per_rotation / TProfile::COLUMNS;
         let entry = AggregatorEntry::new(required_packets);
         Self {
             measurements_per_rotation,
@@ -83,32 +83,32 @@ impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
 
     pub fn put_data_value(
         &mut self,
-        data: OusterPacket<COLUMNS, TProfile>,
-    ) -> Option<CompleteData<'_, COLUMNS, TProfile>> {
+        data: OusterPacket<TProfile>,
+    ) -> Option<CompleteData<'_, TProfile>> {
         *self.tmp.as_mut() = data;
         self.process_tmp()
     }
 
     pub fn next_buffer(&mut self) -> &mut [u8] {
-        let tmp: &mut OusterPacket<COLUMNS, TProfile> = &mut self.tmp;
+        let tmp: &mut OusterPacket<TProfile> = &mut self.tmp;
         unsafe {
             std::slice::from_raw_parts_mut(
                 std::ptr::from_mut(tmp) as *mut u8,
-                std::mem::size_of::<OusterPacket<COLUMNS, TProfile>>(),
+                std::mem::size_of::<OusterPacket<TProfile>>(),
             )
         }
     }
 
     pub fn put_data_sync(
         &mut self,
-        operator: impl FnOnce(&mut OusterPacket<COLUMNS, TProfile>) -> std::io::Result<()>,
-    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, TProfile>>> {
+        operator: impl FnOnce(&mut OusterPacket<TProfile>) -> std::io::Result<()>,
+    ) -> std::io::Result<Option<CompleteData<'_, TProfile>>> {
         operator(self.tmp.as_mut())?;
         Ok(self.process_tmp())
     }
 
-    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, TProfile>> {
-        let idx = self.tmp.columns[0].channels_header.measurement_id as usize / 16;
+    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, TProfile>> {
+        let idx = self.tmp.columns.as_ref()[0].channels_header.measurement_id as usize / 16;
 
         if self.cur_measurement < self.tmp.header.frame_id {
             self.entries.reverse();
@@ -119,7 +119,7 @@ impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
                 self.completion_historgram[self.entries[0].complete.min(last_index)] += 1;
 
                 let mut hist = self.entries[0].missing_frame_histogram;
-                for x in 0..(self.measurements_per_rotation / COLUMNS) {
+                for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
                     if hist & 1 == 0 {
                         self.missing_packets[x] += 1;
                     }
@@ -138,7 +138,7 @@ impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
                 std::mem::swap(&mut entry.complete_buf[idx], &mut self.tmp);
                 entry.complete += 1;
                 entry.missing_frame_histogram |= 1 << idx;
-                if entry.complete == self.measurements_per_rotation / COLUMNS {
+                if entry.complete == self.measurements_per_rotation / TProfile::COLUMNS {
                     Some(CompleteData(&entry.complete_buf))
                 } else {
                     None
@@ -151,12 +151,10 @@ impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
     }
 }
 
-pub struct CompleteData<'a, const COLUMNS: usize, TProfile: Profile>(
-    &'a [Box<OusterPacket<COLUMNS, TProfile>>],
-);
+pub struct CompleteData<'a, TProfile: Profile>(&'a [Box<OusterPacket<TProfile>>]);
 
-impl<'a, const COLUMNS: usize, TProfile: Profile> CompleteData<'a, COLUMNS, TProfile> {
-    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, TProfile>> {
+impl<'a, TProfile: Profile> CompleteData<'a, TProfile> {
+    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<TProfile>> {
         self.0.iter().map(AsRef::as_ref)
     }
 
@@ -165,7 +163,7 @@ impl<'a, const COLUMNS: usize, TProfile: Profile> CompleteData<'a, COLUMNS, TPro
         let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
         let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
         self.iter()
-            .flat_map(|lidar_packet| lidar_packet.columns.iter())
+            .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
             .flat_map(move |column| {
                 column
                     .channels

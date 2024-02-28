@@ -5,15 +5,15 @@ use crate::{
     PointInfo, PointInfos, SingleProfile,
 };
 
-pub type Dual128OusterPacket = OusterPacket<16, DualProfile<16, 128>>;
-pub type Single128OusterPacket = OusterPacket<16, SingleProfile<16, 128>>;
-pub type Dual64OusterPacket = OusterPacket<16, DualProfile<16, 128>>;
+pub type Dual128OusterPacket = OusterPacket<DualProfile<16, 128>>;
+pub type Single128OusterPacket = OusterPacket<SingleProfile<16, 128>>;
+pub type Dual64OusterPacket = OusterPacket<DualProfile<16, 128>>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct OusterPacket<const TCOLUMNS: usize, TProfile: Profile> {
+pub struct OusterPacket<TProfile: Profile> {
     pub header: OusterPacketHeader,
-    pub columns: [Column<TProfile>; TCOLUMNS],
+    pub columns: TProfile::Columns,
     pub reserved: [u32; 8],
 }
 
@@ -34,16 +34,16 @@ pub struct OusterPacketHeader {
     _reserved_2: [u32; 3],
 }
 
-impl<const TCOLUMNS: usize, TProfile: Profile> Default for OusterPacket<TCOLUMNS, TProfile> {
+impl<TProfile: Profile> Default for OusterPacket<TProfile> {
     fn default() -> Self {
         Self {
             header: Default::default(),
-            columns: [Default::default(); TCOLUMNS],
+            columns: TProfile::initialize_columns(),
             reserved: [0; 8],
         }
     }
 }
-impl<const TCOLUMNS: usize, TProfile: Profile> OusterPacket<TCOLUMNS, TProfile> {
+impl<TProfile: Profile> OusterPacket<TProfile> {
     // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
     // mut allows to implement this in the future without breaking changes
     #[cfg(target_endian = "little")]
