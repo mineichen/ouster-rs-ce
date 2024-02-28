@@ -4,7 +4,7 @@ use crate::{Column, DualChannel, LowDataChannel, SingleChannel};
 
 pub trait Profile: Clone + Copy + Send + Sync + 'static {
     type Array<T>: AsRef<[T]>;
-    type Columns: AsRef<[Column<Self>]> + Clone;
+    type Columns: AsRef<[Column<Self>]> + Clone + Send + Sync + 'static;
     type Channel: Default + Copy + Debug + PointInfos + Send + Sync + 'static;
     type Channels: AsRef<[Self::Channel]> + Copy + Debug + Send + Sync + 'static;
 
