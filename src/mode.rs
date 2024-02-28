@@ -4,7 +4,7 @@ use crate::{DualChannel, LowDataChannel, SingleChannel};
 
 pub trait Mode: Clone + Copy {
     type Array<T>: AsRef<[T]>;
-    type Channel: Default + Copy + Debug + PointInfos;
+    type Channel: Default + Copy + Debug + PointInfos + Send + Sync + 'static;
 }
 
 pub trait PointInfos {
