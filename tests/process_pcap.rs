@@ -10,7 +10,7 @@ const UDP_HEADER_SIZE: usize = 42;
 
 #[test]
 fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<64, DualProfile<16, 128>>(
+    ouster_pcd_converter::<DualProfile<16, 64>>(
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903.json",
         "OS-0-64-U02_v3.0.1_1024x10_20230510_135903-000.pcap",
     )
@@ -18,7 +18,7 @@ fn ouster_pcd_64() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualProfile<16, 128>>(
+    ouster_pcd_converter::<DualProfile<16, 128>>(
         "OS-0-128_v3.0.1_1024x10_20230510_134250.json",
         "OS-0-128_v3.0.1_1024x10_20230510_134250-000.pcap",
     )
@@ -26,26 +26,26 @@ fn ouster_pcd_128() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn ouster_pcd_2047() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualProfile<16, 128>>(
+    ouster_pcd_converter::<DualProfile<16, 128>>(
         "2023122_2047_OS-0-128_122313000118.json",
         "2023122_2047_OS-0-128_122313000118.pcap",
     )
 }
 #[test]
 fn ouster_pcd_128rows_18_feb() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, DualProfile<16, 128>>(
+    ouster_pcd_converter::<DualProfile<16, 128>>(
         "20240218_1622_OS-0-128_122403000369.json",
         "20240218_1622_OS-0-128_122403000369.pcap",
     )
 }
 #[test]
 fn ouster_pcd_128_single() -> Result<(), Box<dyn std::error::Error>> {
-    ouster_pcd_converter::<128, SingleProfile<16, 128>>(
+    ouster_pcd_converter::<SingleProfile<16, 128>>(
         "single_20240218_1625_OS-0-128_122403000369.json",
         "single_20240218_1625_OS-0-128_122403000369.pcap",
     )
 }
-fn ouster_pcd_converter<const LAYERS: usize, TProfile: Profile>(
+fn ouster_pcd_converter<TProfile: Profile>(
     test_json_path: &str,
     test_pcap_file: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -77,15 +77,15 @@ fn ouster_pcd_converter<const LAYERS: usize, TProfile: Profile>(
     }
     .build_from_writer(Cursor::new(&mut buf))?;
 
-    let mut image = vec![0u8; scan_width as usize * LAYERS];
+    let mut image = vec![0u8; scan_width as usize * TProfile::LAYERS];
     let mut aggregator = Aggregator::new(scan_width as usize);
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
-        if slice.len() != std::mem::size_of::<OusterPacket<16, LAYERS, TProfile>>() {
+        if slice.len() != std::mem::size_of::<OusterPacket<16, TProfile>>() {
             continue;
         }
-        let lidar_packet = OusterPacket::<16, LAYERS, TProfile>::from_maybe_unaligned(slice)?;
+        let lidar_packet = OusterPacket::<16, TProfile>::from_maybe_unaligned(slice)?;
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet.clone()) {
             if skip_complete > 0 {
                 skip_complete -= 1;
@@ -114,7 +114,7 @@ fn ouster_pcd_converter<const LAYERS: usize, TProfile: Profile>(
                 let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)
                     + scan_width as f32) as usize
                     % scan_width as usize;
-                let image_idx = (idx % LAYERS) * (scan_width as usize) + col;
+                let image_idx = (idx % TProfile::LAYERS) * (scan_width as usize) + col;
                 image[image_idx] = val;
             }
             let mut dist = complete_buf.iter_points_flat(&config).collect::<Vec<_>>();
@@ -128,7 +128,7 @@ fn ouster_pcd_converter<const LAYERS: usize, TProfile: Profile>(
             break;
         }
     }
-    let image = image::GrayImage::from_vec(scan_width as _, LAYERS as _, image).unwrap();
+    let image = image::GrayImage::from_vec(scan_width as _, TProfile::LAYERS as _, image).unwrap();
     let median = imageproc::filter::median_filter(&image, 2, 2);
     //let median = imageproc::filter::sharpen3x3(&median);
     // let contours = imageproc::contours::find_contours::<i32>(&median);

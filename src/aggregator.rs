@@ -3,15 +3,13 @@ use std::num::Saturating;
 use crate::{profile::Profile, OusterConfig, OusterPacket, PointInfos};
 
 #[derive(Clone)]
-struct AggregatorEntry<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> {
-    complete_buf: Box<[Box<OusterPacket<COLUMNS, LAYERS, TProfile>>]>,
+struct AggregatorEntry<const COLUMNS: usize, TProfile: Profile> {
+    complete_buf: Box<[Box<OusterPacket<COLUMNS, TProfile>>]>,
     missing_frame_histogram: u128,
     complete: usize,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
-    AggregatorEntry<COLUMNS, LAYERS, TProfile>
-{
+impl<const COLUMNS: usize, TProfile: Profile> AggregatorEntry<COLUMNS, TProfile> {
     fn new(required_packets: usize) -> Self {
         Self {
             complete_buf: (0..required_packets)
@@ -24,19 +22,17 @@ impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
 }
 
 /// Columns per package (usually 16)
-pub struct Aggregator<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> {
+pub struct Aggregator<const COLUMNS: usize, TProfile: Profile> {
     measurements_per_rotation: usize,
-    entries: [AggregatorEntry<COLUMNS, LAYERS, TProfile>; 2],
-    tmp: Box<OusterPacket<COLUMNS, LAYERS, TProfile>>,
+    entries: [AggregatorEntry<COLUMNS, TProfile>; 2],
+    tmp: Box<OusterPacket<COLUMNS, TProfile>>,
     completion_historgram: Vec<Saturating<u32>>,
     missing_packets: Vec<Saturating<u32>>,
     dropped_frames: Saturating<u32>,
     cur_measurement: u16,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile> Default
-    for Aggregator<COLUMNS, LAYERS, TProfile>
-{
+impl<const COLUMNS: usize, TProfile: Profile> Default for Aggregator<COLUMNS, TProfile> {
     fn default() -> Self {
         Self::new(1024)
     }
@@ -49,9 +45,7 @@ pub struct AggregatorStatistics {
     pub missing_packets: Vec<u32>,
 }
 
-impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
-    Aggregator<COLUMNS, LAYERS, TProfile>
-{
+impl<const COLUMNS: usize, TProfile: Profile> Aggregator<COLUMNS, TProfile> {
     pub fn new(measurements_per_rotation: usize) -> Self {
         let required_packets = measurements_per_rotation / COLUMNS;
         let entry = AggregatorEntry::new(required_packets);
@@ -89,31 +83,31 @@ impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
 
     pub fn put_data_value(
         &mut self,
-        data: OusterPacket<COLUMNS, LAYERS, TProfile>,
-    ) -> Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>> {
+        data: OusterPacket<COLUMNS, TProfile>,
+    ) -> Option<CompleteData<'_, COLUMNS, TProfile>> {
         *self.tmp.as_mut() = data;
         self.process_tmp()
     }
 
     pub fn next_buffer(&mut self) -> &mut [u8] {
-        let tmp: &mut OusterPacket<COLUMNS, LAYERS, TProfile> = &mut self.tmp;
+        let tmp: &mut OusterPacket<COLUMNS, TProfile> = &mut self.tmp;
         unsafe {
             std::slice::from_raw_parts_mut(
                 std::ptr::from_mut(tmp) as *mut u8,
-                std::mem::size_of::<OusterPacket<COLUMNS, LAYERS, TProfile>>(),
+                std::mem::size_of::<OusterPacket<COLUMNS, TProfile>>(),
             )
         }
     }
 
     pub fn put_data_sync(
         &mut self,
-        operator: impl FnOnce(&mut OusterPacket<COLUMNS, LAYERS, TProfile>) -> std::io::Result<()>,
-    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>>> {
+        operator: impl FnOnce(&mut OusterPacket<COLUMNS, TProfile>) -> std::io::Result<()>,
+    ) -> std::io::Result<Option<CompleteData<'_, COLUMNS, TProfile>>> {
         operator(self.tmp.as_mut())?;
         Ok(self.process_tmp())
     }
 
-    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, LAYERS, TProfile>> {
+    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, COLUMNS, TProfile>> {
         let idx = self.tmp.columns[0].channels_header.measurement_id as usize / 16;
 
         if self.cur_measurement < self.tmp.header.frame_id {
@@ -157,14 +151,12 @@ impl<const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
     }
 }
 
-pub struct CompleteData<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>(
-    &'a [Box<OusterPacket<COLUMNS, LAYERS, TProfile>>],
+pub struct CompleteData<'a, const COLUMNS: usize, TProfile: Profile>(
+    &'a [Box<OusterPacket<COLUMNS, TProfile>>],
 );
 
-impl<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
-    CompleteData<'a, COLUMNS, LAYERS, TProfile>
-{
-    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, LAYERS, TProfile>> {
+impl<'a, const COLUMNS: usize, TProfile: Profile> CompleteData<'a, COLUMNS, TProfile> {
+    pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<COLUMNS, TProfile>> {
         self.0.iter().map(AsRef::as_ref)
     }
 
@@ -177,6 +169,7 @@ impl<'a, const COLUMNS: usize, const LAYERS: usize, TProfile: Profile>
             .flat_map(move |column| {
                 column
                     .channels
+                    .as_ref()
                     .iter()
                     .map(move |point| point.get_primary_infos_uncorrected().distance - nvec)
             })
