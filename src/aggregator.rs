@@ -1,23 +1,27 @@
-use std::num::Saturating;
+use std::{num::Saturating, sync::Arc};
 
 use crate::{
     profile::Profile, OusterConfig, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo,
 };
 
+#[derive(Clone)]
 struct AggregatorEntry<TProfile: Profile> {
+    frame_id: u16,
     complete_buf: Box<[Box<OusterPacket<TProfile>>]>,
-    missing_frame_histogram: u128,
-    complete: usize,
+    missing_packet_histogram: u128,
+    count_packets: usize,
 }
 
 impl<TProfile: Profile> AggregatorEntry<TProfile> {
     fn new(required_packets: usize) -> Self {
+        debug_assert!(required_packets <= 128);
         Self {
+            frame_id: 0,
             complete_buf: (0..required_packets)
                 .map(|_| Default::default())
                 .collect::<Box<_>>(),
-            missing_frame_histogram: 0,
-            complete: Default::default(),
+            missing_packet_histogram: 0,
+            count_packets: Default::default(),
         }
     }
 }
@@ -25,12 +29,13 @@ impl<TProfile: Profile> AggregatorEntry<TProfile> {
 /// Columns per package (usually 16)
 pub struct Aggregator<TProfile: Profile> {
     measurements_per_rotation: usize,
-    entries: [AggregatorEntry<TProfile>; 2],
+    entry_active: AggregatorEntry<TProfile>,
+    entry_other: AggregatorEntry<TProfile>,
+    entry_out: Arc<AggregatorEntry<TProfile>>,
     tmp: Box<OusterPacket<TProfile>>,
     completion_historgram: Vec<Saturating<u32>>,
     missing_packets: Vec<Saturating<u32>>,
-    dropped_frames: Saturating<u32>,
-    cur_measurement: u16,
+    dropped_packets: Saturating<u32>,
 }
 
 impl<TProfile: Profile> Default for Aggregator<TProfile> {
@@ -49,18 +54,18 @@ pub struct AggregatorStatistics {
 impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn new(measurements_per_rotation: usize) -> Self {
         let required_packets = measurements_per_rotation / TProfile::COLUMNS;
-        let entry = AggregatorEntry::new(required_packets);
-        let entry2 = AggregatorEntry::new(required_packets);
+
         Self {
             measurements_per_rotation,
-            entries: [entry, entry2],
+            entry_active: AggregatorEntry::new(required_packets),
+            entry_other: AggregatorEntry::new(required_packets),
+            entry_out: Arc::new(AggregatorEntry::new(required_packets)),
             tmp: Default::default(),
             // +2 is to detect if more than the expected number of Packagers enters
             // Example required_packages=2 [none, one_package, two_packages, more]
             completion_historgram: vec![Saturating(0); required_packets + 2],
             missing_packets: vec![Saturating(0); required_packets],
-            dropped_frames: Saturating(0),
-            cur_measurement: Default::default(),
+            dropped_packets: Saturating(0),
         }
     }
 
@@ -70,15 +75,23 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             .iter()
             .map(|x| x.0)
             .collect::<Vec<_>>();
-        for e in self.entries.iter() {
-            r[e.complete.min(self.entries[0].complete_buf.len())] += 1;
-        }
+
+        r[self
+            .entry_active
+            .count_packets
+            .min(self.missing_packets.len())] += 1;
+        // r[self
+        //     .entry_before
+        //     .try_lock()
+        //     .map(|x| x.complete.min(self.missing_packets.len()))
+        //     .unwrap_or(default)] += 1;
+
         r
     }
     pub fn get_statistics(&self) -> AggregatorStatistics {
         AggregatorStatistics {
             completion_historgram: self.get_histogram(),
-            dropped_frames: self.dropped_frames.0,
+            dropped_frames: self.dropped_packets.0,
             missing_packets: self.missing_packets.iter().map(|x| x.0).collect::<Vec<_>>(),
         }
     }
@@ -86,7 +99,7 @@ impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn put_data_value(
         &mut self,
         data: OusterPacket<TProfile>,
-    ) -> Option<CompleteData<'_, TProfile>> {
+    ) -> Option<CompleteData<TProfile>> {
         *self.tmp.as_mut() = data;
         self.process_tmp()
     }
@@ -104,79 +117,71 @@ impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn put_data_sync(
         &mut self,
         operator: impl FnOnce(&mut OusterPacket<TProfile>) -> std::io::Result<()>,
-    ) -> std::io::Result<Option<CompleteData<'_, TProfile>>> {
+    ) -> std::io::Result<Option<CompleteData<TProfile>>> {
         operator(self.tmp.as_mut())?;
         Ok(self.process_tmp())
     }
 
-    pub fn process_tmp(&mut self) -> Option<CompleteData<'_, TProfile>> {
-        let idx = self.tmp.columns.as_ref()[0].channels_header.measurement_id as usize / 16;
+    pub fn process_tmp(&mut self) -> Option<CompleteData<TProfile>> {
+        let idx = self.tmp.columns.as_ref()[0].channels_header.measurement_id as usize
+            / TProfile::COLUMNS;
 
-        if self.cur_measurement < self.tmp.header.frame_id {
-            self.entries.reverse();
-            if self.entries[0].complete != 0 {
-                let last_index = self.completion_historgram.len() - 1;
-                self.completion_historgram[0] +=
-                    (self.tmp.header.frame_id - self.cur_measurement - 1) as u32;
-                self.completion_historgram[self.entries[0].complete.min(last_index)] += 1;
-
-                let mut hist = self.entries[0].missing_frame_histogram;
-                for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
-                    if hist & 1 == 0 {
-                        self.missing_packets[x] += 1;
-                    }
-                    hist >>= 1;
-                }
-            }
-            self.entries[0].missing_frame_histogram = 1 << idx;
-
-            self.entries[0].complete = 1;
-            self.cur_measurement = self.tmp.header.frame_id;
-            std::mem::swap(&mut self.entries[0].complete_buf[idx], &mut self.tmp);
+        if self.entry_active.frame_id == self.tmp.header.frame_id {
+            std::mem::swap(&mut self.entry_active.complete_buf[idx], &mut self.tmp);
+            self.entry_active.count_packets += 1;
+            self.entry_active.missing_packet_histogram |= 1 << idx;
             None
         } else {
-            let entry_index = self.cur_measurement - self.tmp.header.frame_id;
-            if let Some(entry) = self.entries.get_mut(entry_index as usize) {
-                std::mem::swap(&mut entry.complete_buf[idx], &mut self.tmp);
-                entry.complete += 1;
-                entry.missing_frame_histogram |= 1 << idx;
-                if entry.complete == self.measurements_per_rotation / TProfile::COLUMNS {
-                    Some(CompleteData(&entry.complete_buf))
-                } else {
-                    None
-                }
+            if self.entry_other.frame_id != self.tmp.header.frame_id {
+                self.entry_other.frame_id = self.tmp.header.frame_id;
+                std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
+                self.dropped_packets += self.entry_other.count_packets as u32;
+                self.entry_other.count_packets = 1;
+                self.entry_other.missing_packet_histogram = 1 << idx;
+                None
             } else {
-                self.dropped_frames += 1;
+                self.entry_other.missing_packet_histogram |= 1 << idx;
+                self.entry_other.count_packets += 1;
+                std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
+                // Finish delayed so out of order UDP Packets are still assigned
+                if self.entry_other.count_packets == 10 {
+                    // Always output for now
+
+                    // Statistics
+                    let result = if self.entry_active.count_packets != 0 {
+                        let last_index = self.completion_historgram.len() - 1;
+                        self.completion_historgram
+                            [self.entry_active.count_packets.min(last_index)] += 1;
+
+                        let mut hist = self.entry_active.missing_packet_histogram;
+                        for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
+                            if hist & 1 == 0 {
+                                self.missing_packets[x] += 1;
+                            }
+                            hist >>= 1;
+                        }
+                        Some(CompleteData(self.entry_out.clone()))
+                    } else {
+                        None
+                    };
+                    let out = Arc::make_mut(&mut self.entry_out);
+                    out.count_packets = 0;
+                    out.missing_packet_histogram = 0;
+                    std::mem::swap(out, &mut self.entry_active);
+                    std::mem::swap(&mut self.entry_active, &mut self.entry_other);
+                    return result;
+                }
                 None
             }
         }
     }
 }
 
-pub struct CompleteData<'a, TProfile: Profile>(&'a [Box<OusterPacket<TProfile>>]);
+pub struct CompleteData<TProfile: Profile>(Arc<AggregatorEntry<TProfile>>);
 
-impl<'a, TProfile: Profile> CompleteData<'a, TProfile> {
+impl<TProfile: Profile> CompleteData<TProfile> {
     pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<TProfile>> {
-        self.0.iter().map(AsRef::as_ref)
-    }
-
-    pub fn into_iter_infos(
-        self,
-        config: &OusterConfig,
-    ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + 'a {
-        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
-        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
-        let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
-        self.0
-            .into_iter()
-            .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
-            .flat_map(move |column| {
-                column
-                    .channels
-                    .as_ref()
-                    .iter()
-                    .map(move |point| point.get_infos(nvec))
-            })
+        self.0.complete_buf.iter().map(AsRef::as_ref)
     }
 
     pub fn iter_infos(
@@ -216,18 +221,57 @@ impl<'a, TProfile: Profile> CompleteData<'a, TProfile> {
     }
 }
 
+// fn is_proceding_order(a: u16, b: u16) -> bool {
+//     let (mut r, overflow) = a.overflowing_sub(b);
+//     if overflow {
+//         r = 0u16.wrapping_sub(r);
+//     }
+//     r < u16::MAX / 4
+// }
+
 #[cfg(test)]
 mod tests {
     use crate::Dual64OusterPacket;
 
     use super::Aggregator;
 
+    // #[test]
+    // fn proceding_order() {
+    //    use crate::aggregator::is_proceding_order;
+    //     for i in 0..u16::MAX {
+    //         assert!(
+    //             is_proceding_order(i, i.wrapping_sub(100)),
+    //             "{}:{}",
+    //             i,
+    //             i.wrapping_sub(100)
+    //         );
+    //         assert!(
+    //             is_proceding_order(i, i.wrapping_add(100)),
+    //             "{}:{}",
+    //             i,
+    //             i.wrapping_add(10)
+    //         );
+    //     }
+
+    //     assert!(is_proceding_order(u16::MAX, 2));
+    //     assert!(is_proceding_order(u16::MAX / 2, u16::MAX / 2 + 1));
+    //     assert!(is_proceding_order(u16::MAX / 2 - 1, u16::MAX / 2));
+    //     assert!(is_proceding_order(u16::MAX / 2 + 10, 0));
+    //     assert!(is_proceding_order(0, u16::MAX / 2 - 10));
+    //     assert!(is_proceding_order(0, u16::MAX / 2));
+    //     assert!(!is_proceding_order(0, u16::MAX / 2 + 2));
+    // }
+
     #[test]
     fn without_missing() {
-        let mut input = (0..64).map(|_| Dual64OusterPacket::default());
+        let mut input = (0..).map(|i| {
+            let mut x = Dual64OusterPacket::default();
+            x.header.frame_id = i / 64;
+            x
+        });
         let mut aggregator = Aggregator::default();
 
-        for i in (&mut input).take(63) {
+        for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
         }
         aggregator
@@ -246,22 +290,28 @@ mod tests {
 
     #[test]
     fn with_unordered() {
-        let mut input = (0..128).map(|i| {
+        let mut input = (0u32..).map(|i| {
             let mut x = Dual64OusterPacket::default();
-            if i > 64 || i == 63 {
-                x.header.frame_id = 1;
-            }
+
+            x.header.frame_id = match i {
+                0..=62 => 0,
+                63 => 1,
+                64 => 0,
+                65..=127 => 1,
+                128.. => 2,
+            };
+
             x
         });
         let mut aggregator = Aggregator::default();
 
-        for (i, data) in (&mut input).take(64).enumerate() {
+        for (i, data) in (&mut input).take(64 + 9).enumerate() {
             assert!(aggregator.put_data_value(data).is_none(), "Item {i}");
         }
         aggregator
             .put_data_value(input.next().unwrap())
             .expect("Pointcloud should be complete");
-        for i in (&mut input).take(62) {
+        for i in (&mut input).take(63) {
             assert!(aggregator.put_data_value(i).is_none());
         }
         aggregator

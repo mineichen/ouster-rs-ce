@@ -62,7 +62,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
     let mut min = f32::MAX;
     let mut max = f32::MIN;
 
-    let mut skip_complete = 10;
+    let mut skip_complete = 3;
     let scan_width: u16 = config.lidar_data_format.columns_per_frame;
 
     //const CAPTURE_POINTS: usize = 70974464;
