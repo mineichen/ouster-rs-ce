@@ -3,7 +3,7 @@ use std::{f32::consts::PI, sync::Arc};
 use crate::config::{OusterConfig, PolarPoint};
 
 impl CartesianIterator<Arc<[(f32, f32)]>> {
-    pub fn from_config(config: &OusterConfig) -> Self {
+    pub fn new_cheap_cloneable_from_config(config: &OusterConfig) -> Self {
         let azimuth_roh_lut = config
             .beam_intrinsics
             .beam_azimuth_angles
@@ -31,7 +31,6 @@ pub struct CartesianIterator<TSlice> {
     translation: (f32, f32, f32),
     horizontal_resolution: u16,
     encoder_angle: f32,
-    //per_row: PerRow,
     offset_x: f32,
 }
 

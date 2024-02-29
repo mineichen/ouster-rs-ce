@@ -184,40 +184,32 @@ impl<TProfile: Profile> CompleteData<TProfile> {
         self.0.complete_buf.iter().map(AsRef::as_ref)
     }
 
-    pub fn iter_infos(
-        &self,
+    pub fn iter_flat<'a, T>(
+        &'a self,
         config: &OusterConfig,
-    ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + '_ {
+        mut map: impl FnMut(&<TProfile as Profile>::Channel, u32) -> T + 'a,
+    ) -> impl Iterator<Item = T> + '_ {
         let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
         let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
         let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
         self.iter()
             .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
-            .flat_map(move |column| {
-                column
-                    .channels
-                    .as_ref()
-                    .iter()
-                    .map(move |point| point.get_infos(nvec))
-            })
+            .flat_map(move |column| column.channels.as_ref().iter())
+            .map(move |x| map(x, nvec))
+    }
+
+    pub fn iter_infos(
+        &self,
+        config: &OusterConfig,
+    ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + '_ {
+        self.iter_flat(config, |point, nvec| point.get_infos(nvec))
     }
 
     pub fn iter_infos_primary(
         &self,
         config: &OusterConfig,
     ) -> impl Iterator<Item = PrimaryPointInfo> + '_ {
-        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
-        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
-        let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
-        self.iter()
-            .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
-            .flat_map(move |column| {
-                column
-                    .channels
-                    .as_ref()
-                    .iter()
-                    .map(move |point| point.get_primary_infos(nvec))
-            })
+        self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
     }
 }
 

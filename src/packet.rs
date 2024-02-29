@@ -7,7 +7,7 @@ use crate::{
 
 pub type Dual128OusterPacket = OusterPacket<DualProfile<16, 128>>;
 pub type Single128OusterPacket = OusterPacket<SingleProfile<16, 128>>;
-pub type Dual64OusterPacket = OusterPacket<DualProfile<16, 128>>;
+pub type Dual64OusterPacket = OusterPacket<DualProfile<16, 64>>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]

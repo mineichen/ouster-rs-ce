@@ -3,7 +3,8 @@ use pcd_rs::{DataKind, PcdSerialize, WriterInit};
 use std::{f32::consts::PI, io::Cursor, path::PathBuf};
 
 use ouster_rs_ce::{
-    Aggregator, CartesianIterator, DualProfile, OusterConfig, OusterPacket, Profile, SingleProfile,
+    Aggregator, CartesianIterator, DualProfile, OusterConfig, OusterPacket, PixelPositionIterator,
+    Profile, SingleProfile,
 };
 
 const UDP_HEADER_SIZE: usize = 42;
@@ -79,6 +80,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
 
     let mut image = vec![0u8; scan_width as usize * TProfile::LAYERS];
     let mut aggregator = Aggregator::new(scan_width as usize);
+    let cartesian = CartesianIterator::new_cheap_cloneable_from_config(&config);
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
@@ -92,11 +94,10 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 continue;
             }
 
-            let iter = CartesianIterator::from_config(&config);
-
-            for (idx, (p, polar_point)) in complete_buf
+            for (idx, ((p, polar_point), (pixel_col, pixel_row))) in complete_buf
                 .iter_infos_primary(&config)
-                .zip(iter)
+                .zip(cartesian.clone())
+                .zip(PixelPositionIterator::from_config(&config))
                 .enumerate()
             {
                 let (x, y, z) = polar_point.calc_xyz(p.distance as f32);
@@ -110,14 +111,18 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 //const OFFSET: f32 = -80.;
                 const FACTOR: f32 = 255. / 0.000001;
                 const OFFSET: f32 = 0.;
+
                 let val = (p.distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
-                let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)
-                    + scan_width as f32) as usize
-                    % scan_width as usize;
-                let image_idx = (idx % TProfile::LAYERS) * (scan_width as usize) + col;
-                image[image_idx] = val;
+                // let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)
+                //     + scan_width as f32) as usize
+                //     % scan_width as usize;
+                //let image_idx = (idx % TProfile::LAYERS) * (scan_width as usize) + col;
+                let image_idx_from_iter = pixel_row * scan_width as usize + pixel_col;
+
+                //image[image_idx] = val;
+                image[image_idx_from_iter] = val;
             }
             let mut dist = complete_buf
                 .iter_infos_primary(&config)
