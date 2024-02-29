@@ -34,27 +34,11 @@ impl<'a> Iterator for PixelPositionIterator<'a> {
         };
 
         let col_shift = col + offset;
+
         Some((
-            (col_shift
-                + if col_shift < 0 {
-                    self.total_cols as isize
-                } else {
-                    0
-                }) as usize,
+            (col_shift + self.total_cols as isize) as usize % self.total_cols,
             row,
         ))
-        // let col = self.index % TProfile::LAYERS;
-        // let row_offset = self.index - col;
-        // let r = self
-        //     .pixel_shifts
-        //     .get(self.index / TProfile::LAYERS)
-        //     .map(|offset| {
-        //         ((col as isize - *offset as isize + TProfile::LAYERS as isize)
-        //             % TProfile::LAYERS as isize) as usize
-        //             + row_offset
-        //     });
-        // self.index += 1;
-        // r
     }
 }
 
@@ -76,7 +60,25 @@ mod tests {
         assert_eq!(
             vec![(1, 0), (2, 1), 
                  (2, 0), (0, 1), 
-                 (3, 0), (1, 1)],
+                 (0, 0), (1, 1)],
+            iter.inspect(|a| println!("{a:?}")).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn upper_overflow() {
+        let iter = PixelPositionIterator {
+            col: 0,
+            row: 0,
+            pixel_shifts: &[1],
+            total_cols: 3,
+        };
+
+        #[rustfmt::skip]
+        assert_eq!(
+            vec![(1, 0), 
+                 (2, 0), 
+                 (0, 0)],
             iter.inspect(|a| println!("{a:?}")).collect::<Vec<_>>()
         );
     }
