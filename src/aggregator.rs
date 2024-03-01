@@ -208,7 +208,8 @@ impl<TProfile: Profile> CompleteData<TProfile> {
     pub fn iter_infos_primary(
         &self,
         config: &OusterConfig,
-    ) -> impl Iterator<Item = PrimaryPointInfo> + '_ {
+    ) -> impl Iterator<Item = PrimaryPointInfo<<TProfile::Channel as PointInfos>::Signal>> + '_
+    {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
     }
 }
