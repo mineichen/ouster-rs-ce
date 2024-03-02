@@ -237,7 +237,9 @@ pub struct RangeData {
 
 impl RangeData {
     pub fn get_distance(&self, n_vec: u32) -> u16 {
-        (self.raw & ((1 << 20) - 1) - n_vec).min(u16::MAX as _) as u16
+        (self.raw & ((1 << 20) - 1) - n_vec)
+            .min(u16::MAX as _)
+            .max(1000) as u16
     }
 
     pub fn get_reflectifity(&self) -> u8 {

@@ -146,6 +146,11 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                 if self.entry_other.count_packets == 10 {
                     // Always output for now
 
+                    println!(
+                        "Is Mut {}: {}",
+                        Arc::get_mut(&mut self.entry_out).is_some(),
+                        self.entry_other.complete_buf[idx].header.frame_id
+                    );
                     let out = Arc::make_mut(&mut self.entry_out);
                     out.count_packets = 0;
                     out.missing_packet_histogram = 0;

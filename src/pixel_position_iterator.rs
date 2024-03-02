@@ -48,6 +48,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fill_all_fields() {
+        let iter = PixelPositionIterator {
+            col: 0,
+            row: 0,
+            pixel_shifts: &[1, -1, 3],
+            total_cols: 4,
+        };
+
+        let mut data = vec![0; 12];
+        for (col, row) in iter {
+            data[row + col * 3] = 1;
+        }
+        assert!(data.iter().all(|&x| x == 1));
+    }
+
+    #[test]
     fn simple() {
         let iter = PixelPositionIterator {
             col: 0,
