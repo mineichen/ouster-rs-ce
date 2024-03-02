@@ -56,7 +56,7 @@ mod tests {
             total_cols: 4,
         };
 
-        let mut data = vec![0; 12];
+        let mut data = [0; 12];
         for (col, row) in iter {
             data[row + col * 3] = 1;
         }

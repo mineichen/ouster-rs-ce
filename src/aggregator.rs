@@ -130,54 +130,52 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             self.entry_active.count_packets += 1;
             self.entry_active.missing_packet_histogram |= 1 << idx;
             None
+        } else if self.entry_other.frame_id != self.tmp.header.frame_id {
+            self.entry_other.frame_id = self.tmp.header.frame_id;
+            std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
+            self.dropped_packets += self.entry_other.count_packets as u32;
+            self.entry_other.count_packets = 1;
+            self.entry_other.missing_packet_histogram = 1 << idx;
+            None
         } else {
-            if self.entry_other.frame_id != self.tmp.header.frame_id {
-                self.entry_other.frame_id = self.tmp.header.frame_id;
-                std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
-                self.dropped_packets += self.entry_other.count_packets as u32;
-                self.entry_other.count_packets = 1;
-                self.entry_other.missing_packet_histogram = 1 << idx;
-                None
-            } else {
-                self.entry_other.missing_packet_histogram |= 1 << idx;
-                self.entry_other.count_packets += 1;
-                std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
-                // Finish delayed so out of order UDP Packets are still assigned
-                if self.entry_other.count_packets == 10 {
-                    // Always output for now
+            self.entry_other.missing_packet_histogram |= 1 << idx;
+            self.entry_other.count_packets += 1;
+            std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
+            // Finish delayed so out of order UDP Packets are still assigned
+            if self.entry_other.count_packets == 10 {
+                // Always output for now
 
-                    println!(
-                        "Is Mut {}: {}",
-                        Arc::get_mut(&mut self.entry_out).is_some(),
-                        self.entry_other.complete_buf[idx].header.frame_id
-                    );
-                    let out = Arc::make_mut(&mut self.entry_out);
-                    out.count_packets = 0;
-                    out.missing_packet_histogram = 0;
-                    std::mem::swap(out, &mut self.entry_active);
-                    std::mem::swap(&mut self.entry_active, &mut self.entry_other);
+                println!(
+                    "Is Mut {}: {}",
+                    Arc::get_mut(&mut self.entry_out).is_some(),
+                    self.entry_other.complete_buf[idx].header.frame_id
+                );
+                let out = Arc::make_mut(&mut self.entry_out);
+                out.count_packets = 0;
+                out.missing_packet_histogram = 0;
+                std::mem::swap(out, &mut self.entry_active);
+                std::mem::swap(&mut self.entry_active, &mut self.entry_other);
 
-                    // Statistics
-                    let result = if out.count_packets != 0 {
-                        let last_index = self.completion_historgram.len() - 1;
-                        self.completion_historgram[out.count_packets.min(last_index)] += 1;
+                // Statistics
+                let result = if out.count_packets != 0 {
+                    let last_index = self.completion_historgram.len() - 1;
+                    self.completion_historgram[out.count_packets.min(last_index)] += 1;
 
-                        let mut hist = out.missing_packet_histogram;
-                        for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
-                            if hist & 1 == 0 {
-                                self.missing_packets[x] += 1;
-                            }
-                            hist >>= 1;
+                    let mut hist = out.missing_packet_histogram;
+                    for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
+                        if hist & 1 == 0 {
+                            self.missing_packets[x] += 1;
                         }
-                        Some(CompleteData(self.entry_out.clone()))
-                    } else {
-                        None
-                    };
+                        hist >>= 1;
+                    }
+                    Some(CompleteData(self.entry_out.clone()))
+                } else {
+                    None
+                };
 
-                    return result;
-                }
-                None
+                return result;
             }
+            None
         }
     }
 }

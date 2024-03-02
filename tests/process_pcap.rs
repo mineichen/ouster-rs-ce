@@ -1,6 +1,6 @@
 use pcap::Capture;
 use pcd_rs::{DataKind, PcdSerialize, WriterInit};
-use std::{f32::consts::PI, io::Cursor, path::PathBuf};
+use std::{io::Cursor, path::PathBuf};
 
 use ouster_rs_ce::{
     Aggregator, CartesianIterator, DualProfile, OusterConfig, OusterPacket, PixelPositionIterator,
@@ -94,7 +94,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 continue;
             }
 
-            for (idx, ((p, polar_point), (pixel_col, pixel_row))) in complete_buf
+            for (_idx, ((p, polar_point), (pixel_col, pixel_row))) in complete_buf
                 .iter_infos_primary(&config)
                 .zip(cartesian.clone())
                 .zip(PixelPositionIterator::from_config(&config))
