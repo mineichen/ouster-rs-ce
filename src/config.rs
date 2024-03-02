@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{borrow::Cow, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -42,8 +42,6 @@ pub enum LidarProfile {
     LowData,
 }
 
-impl LidarProfile {}
-
 impl Serialize for LidarProfile {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -62,8 +60,8 @@ impl<'de> Deserialize<'de> for LidarProfile {
     where
         D: serde::Deserializer<'de>,
     {
-        let x = <&str>::deserialize(deserializer)?;
-        Self::from_str(x).map_err(<D::Error as serde::de::Error>::custom)
+        let x = Cow::<str>::deserialize(deserializer)?;
+        Self::from_str(&x).map_err(<D::Error as serde::de::Error>::custom)
     }
 }
 

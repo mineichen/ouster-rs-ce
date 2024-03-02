@@ -26,7 +26,6 @@ impl<TProfile: Profile> AggregatorEntry<TProfile> {
     }
 }
 
-/// Columns per package (usually 16)
 pub struct Aggregator<TProfile: Profile> {
     measurements_per_rotation: usize,
     entry_active: AggregatorEntry<TProfile>,
@@ -147,13 +146,18 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                 if self.entry_other.count_packets == 10 {
                     // Always output for now
 
-                    // Statistics
-                    let result = if self.entry_active.count_packets != 0 {
-                        let last_index = self.completion_historgram.len() - 1;
-                        self.completion_historgram
-                            [self.entry_active.count_packets.min(last_index)] += 1;
+                    let out = Arc::make_mut(&mut self.entry_out);
+                    out.count_packets = 0;
+                    out.missing_packet_histogram = 0;
+                    std::mem::swap(out, &mut self.entry_active);
+                    std::mem::swap(&mut self.entry_active, &mut self.entry_other);
 
-                        let mut hist = self.entry_active.missing_packet_histogram;
+                    // Statistics
+                    let result = if out.count_packets != 0 {
+                        let last_index = self.completion_historgram.len() - 1;
+                        self.completion_historgram[out.count_packets.min(last_index)] += 1;
+
+                        let mut hist = out.missing_packet_histogram;
                         for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
                             if hist & 1 == 0 {
                                 self.missing_packets[x] += 1;
@@ -164,11 +168,7 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                     } else {
                         None
                     };
-                    let out = Arc::make_mut(&mut self.entry_out);
-                    out.count_packets = 0;
-                    out.missing_packet_histogram = 0;
-                    std::mem::swap(out, &mut self.entry_active);
-                    std::mem::swap(&mut self.entry_active, &mut self.entry_other);
+
                     return result;
                 }
                 None
@@ -182,6 +182,14 @@ pub struct CompleteData<TProfile: Profile>(Arc<AggregatorEntry<TProfile>>);
 impl<TProfile: Profile> CompleteData<TProfile> {
     pub fn iter(&self) -> impl Iterator<Item = &OusterPacket<TProfile>> {
         self.0.complete_buf.iter().map(AsRef::as_ref)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.count_packets
+    }
+
+    pub fn statistics(&self) -> u128 {
+        self.0.missing_packet_histogram
     }
 
     pub fn iter_flat<'a, T>(
@@ -214,46 +222,11 @@ impl<TProfile: Profile> CompleteData<TProfile> {
     }
 }
 
-// fn is_proceding_order(a: u16, b: u16) -> bool {
-//     let (mut r, overflow) = a.overflowing_sub(b);
-//     if overflow {
-//         r = 0u16.wrapping_sub(r);
-//     }
-//     r < u16::MAX / 4
-// }
-
 #[cfg(test)]
 mod tests {
     use crate::Dual64OusterPacket;
 
     use super::Aggregator;
-
-    // #[test]
-    // fn proceding_order() {
-    //    use crate::aggregator::is_proceding_order;
-    //     for i in 0..u16::MAX {
-    //         assert!(
-    //             is_proceding_order(i, i.wrapping_sub(100)),
-    //             "{}:{}",
-    //             i,
-    //             i.wrapping_sub(100)
-    //         );
-    //         assert!(
-    //             is_proceding_order(i, i.wrapping_add(100)),
-    //             "{}:{}",
-    //             i,
-    //             i.wrapping_add(10)
-    //         );
-    //     }
-
-    //     assert!(is_proceding_order(u16::MAX, 2));
-    //     assert!(is_proceding_order(u16::MAX / 2, u16::MAX / 2 + 1));
-    //     assert!(is_proceding_order(u16::MAX / 2 - 1, u16::MAX / 2));
-    //     assert!(is_proceding_order(u16::MAX / 2 + 10, 0));
-    //     assert!(is_proceding_order(0, u16::MAX / 2 - 10));
-    //     assert!(is_proceding_order(0, u16::MAX / 2));
-    //     assert!(!is_proceding_order(0, u16::MAX / 2 + 2));
-    // }
 
     #[test]
     fn without_missing() {
