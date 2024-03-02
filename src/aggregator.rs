@@ -1,5 +1,7 @@
 use std::{num::Saturating, sync::Arc};
 
+use bytemuck::Zeroable;
+
 use crate::{
     profile::Profile, OusterConfig, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo,
 };
@@ -35,12 +37,6 @@ pub struct Aggregator<TProfile: Profile> {
     completion_historgram: Vec<Saturating<u32>>,
     missing_packets: Vec<Saturating<u32>>,
     dropped_packets: Saturating<u32>,
-}
-
-impl<TProfile: Profile> Default for Aggregator<TProfile> {
-    fn default() -> Self {
-        Self::new(1024)
-    }
 }
 
 #[derive(Debug)]
@@ -144,15 +140,10 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             // Finish delayed so out of order UDP Packets are still assigned
             if self.entry_other.count_packets == 10 {
                 // Always output for now
-
-                println!(
-                    "Is Mut {}: {}",
-                    Arc::get_mut(&mut self.entry_out).is_some(),
-                    self.entry_other.complete_buf[idx].header.frame_id
-                );
                 let out = Arc::make_mut(&mut self.entry_out);
                 out.count_packets = 0;
                 out.missing_packet_histogram = 0;
+
                 std::mem::swap(out, &mut self.entry_active);
                 std::mem::swap(&mut self.entry_active, &mut self.entry_other);
 
@@ -164,6 +155,7 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                     let mut hist = out.missing_packet_histogram;
                     for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
                         if hist & 1 == 0 {
+                            *out.complete_buf[x] = OusterPacket::zeroed();
                             self.missing_packets[x] += 1;
                         }
                         hist >>= 1;
@@ -242,7 +234,7 @@ mod tests {
             x.header.frame_id = i / 64;
             x
         });
-        let mut aggregator = Aggregator::default();
+        let mut aggregator = Aggregator::new(1024);
 
         for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
@@ -254,7 +246,7 @@ mod tests {
 
     #[test]
     fn ignore_old_frame() {
-        let mut aggregator = Aggregator::default();
+        let mut aggregator = Aggregator::new(1024);
         let mut packet = Dual64OusterPacket::default();
         packet.header.frame_id = 10;
         aggregator.put_data_value(packet);
@@ -276,7 +268,7 @@ mod tests {
 
             x
         });
-        let mut aggregator = Aggregator::default();
+        let mut aggregator = Aggregator::new(1024);
 
         for (i, data) in (&mut input).take(64 + 9).enumerate() {
             assert!(aggregator.put_data_value(data).is_none(), "Item {i}");

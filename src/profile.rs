@@ -1,12 +1,14 @@
 use std::{any::Any, fmt::Debug};
 
+use bytemuck::Zeroable;
+
 use crate::{Column, DualChannel, LowDataChannel, SingleChannel};
 
-pub trait Profile: Copy + Send + Sync + 'static {
+pub trait Profile: Clone + Zeroable + Send + Sync + 'static {
     type Array<T>: AsRef<[T]>;
-    type Columns: AsRef<[Column<Self>]> + Clone + Send + Sync + 'static;
+    type Columns: AsRef<[Column<Self>]> + Clone + Zeroable + Send + Sync + 'static;
     type Channel: Default + Debug + PointInfos + Send + Sync + 'static;
-    type Channels: AsRef<[Self::Channel]> + Debug + Send + Sync + 'static;
+    type Channels: AsRef<[Self::Channel]> + Zeroable + Debug + Send + Sync + 'static;
 
     const COLUMNS: usize;
     const LAYERS: usize;
@@ -66,7 +68,7 @@ impl<TSignal: Any> PrimaryPointInfo<TSignal> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct DualProfile<const COLUMNS: usize, const LAYERS: usize>;
 impl<const COLUMNS: usize, const LAYERS: usize> Profile for DualProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];
@@ -85,7 +87,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Profile for DualProfile<COLUMNS,
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct SingleProfile<const COLUMNS: usize, const LAYERS: usize>;
 impl<const COLUMNS: usize, const LAYERS: usize> Profile for SingleProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];
@@ -104,7 +106,7 @@ impl<const COLUMNS: usize, const LAYERS: usize> Profile for SingleProfile<COLUMN
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct LowDataProfile<const COLUMNS: usize, const LAYERS: usize>;
 impl<const COLUMNS: usize, const LAYERS: usize> Profile for LowDataProfile<COLUMNS, LAYERS> {
     type Array<T> = [T; COLUMNS];

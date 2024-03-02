@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use bytemuck::Zeroable;
+
 use crate::{
     profile::{DualProfile, Profile},
     PointChannelInfo, PointInfo, PointInfos, PrimaryPointInfo, SingleProfile,
@@ -10,7 +12,7 @@ pub type Single128OusterPacket = OusterPacket<SingleProfile<16, 128>>;
 pub type Dual64OusterPacket = OusterPacket<DualProfile<16, 64>>;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Zeroable)]
 pub struct OusterPacket<TProfile: Profile> {
     pub header: OusterPacketHeader,
     pub columns: TProfile::Columns,
@@ -18,7 +20,7 @@ pub struct OusterPacket<TProfile: Profile> {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Zeroable)]
 pub struct OusterPacketHeader {
     pub packet_type: u16,
     pub frame_id: u16,
@@ -83,7 +85,7 @@ pub struct SizeMismatchError {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable)]
 pub struct Column<TProfile: Profile> {
     pub channels_header: ChannelsHeader,
     pub channels: TProfile::Channels,
@@ -101,7 +103,7 @@ impl<TProfile: Profile> Default for Column<TProfile> {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct ChannelsHeader {
     // Single u64 would force ChannelsHeader to be 64bit aligned
     pub timestamp_a: u32,
@@ -117,7 +119,7 @@ impl ChannelsHeader {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct DualChannel {
     pub info_ret1: RangeData,
     pub info_ret2: RangeData,
@@ -160,7 +162,7 @@ impl PointInfos for DualChannel {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct SingleChannel {
     pub range_and_reserved: u32,
     pub reflectifity: u8,
@@ -198,7 +200,7 @@ impl PointInfos for SingleChannel {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct LowDataChannel {
     pub distance_and_reserve: u16,
     pub reflectifity: u8,
@@ -232,7 +234,7 @@ impl PointInfos for LowDataChannel {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct RangeData {
     raw: u32,
 }
