@@ -94,11 +94,10 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 continue;
             }
 
-            for (_idx, ((p, polar_point), (pixel_col, pixel_row))) in complete_buf
+            for ((p, polar_point), (pixel_col, pixel_row)) in complete_buf
                 .iter_infos_primary(&config)
                 .zip(cartesian.clone())
                 .zip(PixelPositionIterator::from_config(&config))
-                .enumerate()
             {
                 let (x, y, z) = polar_point.calc_xyz(p.distance as f32);
 

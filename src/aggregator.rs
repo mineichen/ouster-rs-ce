@@ -187,6 +187,10 @@ impl<TProfile: Profile> CompleteData<TProfile> {
         self.0.complete_buf.iter().map(AsRef::as_ref)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.count_packets == 0
+    }
+
     pub fn len(&self) -> usize {
         self.0.count_packets
     }

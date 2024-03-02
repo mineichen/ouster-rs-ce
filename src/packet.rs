@@ -44,8 +44,10 @@ impl<TProfile: Profile> Default for OusterPacket<TProfile> {
     }
 }
 impl<TProfile: Profile> OusterPacket<TProfile> {
-    // Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
-    // mut allows to implement this in the future without breaking changes
+    /// Not yet aware of Endianness... The buffer needs to be modified in that case and data_accessors of irregular bitsizes have to be adapted too
+    /// mut allows to implement this in the future without breaking changes
+    /// # Safety
+    /// Memory has to be aligned with OusterPacket<TProfile>
     #[cfg(target_endian = "little")]
     pub unsafe fn from_aligned_memory(buffer: &[u8]) -> &Self {
         if (buffer.as_ptr()) as usize % 32 != 0 {
