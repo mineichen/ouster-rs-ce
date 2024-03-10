@@ -3,8 +3,8 @@ use pcd_rs::{DataKind, PcdSerialize, WriterInit};
 use std::{io::Cursor, path::PathBuf};
 
 use ouster_rs_ce::{
-    Aggregator, CartesianIterator, DualProfile, OusterConfig, OusterPacket, PixelPositionIterator,
-    Profile, SingleProfile,
+    Aggregator, CartesianIterator, DualProfile, LowDataProfile, OusterConfig, OusterPacket,
+    PixelPositionIterator, Profile, SingleProfile,
 };
 
 const UDP_HEADER_SIZE: usize = 42;
@@ -46,6 +46,14 @@ fn ouster_pcd_128_single() -> Result<(), Box<dyn std::error::Error>> {
         "single_20240218_1625_OS-0-128_122403000369.pcap",
     )
 }
+
+#[test]
+fn low_128() -> Result<(), Box<dyn std::error::Error>> {
+    ouster_pcd_converter::<LowDataProfile<16, 128>>(
+        "lowdata_2024039_1600_OS-0-128_122403000369.json",
+        "lowdata_2024039_1600_OS-0-128_122403000369.pcap",
+    )
+}
 fn ouster_pcd_converter<TProfile: Profile>(
     test_json_path: &str,
     test_pcap_file: &str,
@@ -63,8 +71,9 @@ fn ouster_pcd_converter<TProfile: Profile>(
     let mut min = f32::MAX;
     let mut max = f32::MIN;
 
-    let mut skip_complete = 3;
-    let scan_width: u16 = config.lidar_data_format.columns_per_frame;
+    let mut skip_complete = 170;
+    let scan_width: u16 =
+        config.lidar_data_format.column_window.1 - config.lidar_data_format.column_window.0 + 1;
 
     //const CAPTURE_POINTS: usize = 70974464;
     const CAPTURE_POINTS: usize = 151072;
@@ -79,7 +88,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
     .build_from_writer(Cursor::new(&mut buf))?;
 
     let mut image = vec![0u8; scan_width as usize * TProfile::LAYERS];
-    let mut aggregator = Aggregator::new(scan_width as usize);
+    let mut aggregator = Aggregator::new(config.lidar_data_format.column_window);
     let cartesian = CartesianIterator::new_cheap_cloneable_from_config(&config);
 
     while let Ok(packet) = cap.next_packet() {
@@ -108,10 +117,13 @@ fn ouster_pcd_converter<TProfile: Profile>(
 
                 //const FACTOR: f32 = 0.03;
                 //const OFFSET: f32 = -80.;
-                const FACTOR: f32 = 255. / 0.000001;
-                const OFFSET: f32 = 0.;
 
-                let val = (p.distance as f32 * FACTOR + OFFSET).min(255.).max(0.) as u8;
+                const MAX_RANGE: f32 = 6000.;
+                const MIN_RANGE: f32 = 4000.;
+
+                let val = ((p.distance as f32 - MIN_RANGE) * (255. / (MAX_RANGE - MIN_RANGE)))
+                    .min(255.)
+                    .max(0.) as u8;
                 min = min.min(val as f32);
                 max = max.max(val as f32);
                 // let col = ((polar_point.azimuth / (PI * 2.) * scan_width as f32)

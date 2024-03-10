@@ -29,6 +29,7 @@ impl<TProfile: Profile> AggregatorEntry<TProfile> {
 }
 
 pub struct Aggregator<TProfile: Profile> {
+    start_measurement_id: u16,
     measurements_per_rotation: usize,
     entry_active: AggregatorEntry<TProfile>,
     entry_other: AggregatorEntry<TProfile>,
@@ -47,11 +48,14 @@ pub struct AggregatorStatistics {
 }
 
 impl<TProfile: Profile> Aggregator<TProfile> {
-    pub fn new(measurements_per_rotation: usize) -> Self {
-        let required_packets = measurements_per_rotation / TProfile::COLUMNS;
+    pub fn new(column_window: (u16, u16)) -> Self {
+        let start_measurement_id = column_window.0 / TProfile::COLUMNS as u16;
+        let required_packets = (column_window.1 as f32 / TProfile::COLUMNS as f32).ceil() as usize
+            - start_measurement_id as usize;
 
         Self {
-            measurements_per_rotation,
+            start_measurement_id,
+            measurements_per_rotation: required_packets as usize * TProfile::COLUMNS,
             entry_active: AggregatorEntry::new(required_packets),
             entry_other: AggregatorEntry::new(required_packets),
             entry_out: Arc::new(AggregatorEntry::new(required_packets)),
@@ -118,8 +122,9 @@ impl<TProfile: Profile> Aggregator<TProfile> {
     }
 
     pub fn process_tmp(&mut self) -> Option<CompleteData<TProfile>> {
-        let idx = self.tmp.columns.as_ref()[0].channels_header.measurement_id as usize
-            / TProfile::COLUMNS;
+        let idx = (self.tmp.columns.as_ref()[0].channels_header.measurement_id) as usize
+            / TProfile::COLUMNS
+            - self.start_measurement_id as usize;
 
         if self.entry_active.frame_id == self.tmp.header.frame_id {
             std::mem::swap(&mut self.entry_active.complete_buf[idx], &mut self.tmp);
@@ -234,7 +239,7 @@ mod tests {
             x.header.frame_id = i / 64;
             x
         });
-        let mut aggregator = Aggregator::new(1024);
+        let mut aggregator = Aggregator::new((0, 1023));
 
         for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
@@ -246,7 +251,7 @@ mod tests {
 
     #[test]
     fn ignore_old_frame() {
-        let mut aggregator = Aggregator::new(1024);
+        let mut aggregator = Aggregator::new((0, 1023));
         let mut packet = Dual64OusterPacket::default();
         packet.header.frame_id = 10;
         aggregator.put_data_value(packet);
@@ -268,7 +273,7 @@ mod tests {
 
             x
         });
-        let mut aggregator = Aggregator::new(1024);
+        let mut aggregator = Aggregator::new((0, 1023));
 
         for (i, data) in (&mut input).take(64 + 9).enumerate() {
             assert!(aggregator.put_data_value(data).is_none(), "Item {i}");

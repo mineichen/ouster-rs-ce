@@ -1,19 +1,31 @@
+use std::ops::RangeInclusive;
+
 use crate::OusterConfig;
 
 pub struct PixelPositionIterator<'a> {
     pixel_shifts: &'a [i8],
-    total_cols: usize,
+
+    last_col: usize,
     col: usize,
     row: usize,
+    stride: usize,
 }
 
 impl<'a> PixelPositionIterator<'a> {
     pub fn from_config(config: &'a OusterConfig) -> Self {
+        Self::new(
+            &config.lidar_data_format.pixel_shift_by_row,
+            (config.lidar_data_format.column_window.0 as usize)
+                ..=(config.lidar_data_format.column_window.1 as usize),
+        )
+    }
+    pub fn new(pixel_shifts: &'a [i8], col: RangeInclusive<usize>) -> Self {
         Self {
-            pixel_shifts: &config.lidar_data_format.pixel_shift_by_row,
-            total_cols: config.lidar_data_format.columns_per_frame as _,
+            pixel_shifts,
+            last_col: *col.end(),
             row: 0,
-            col: 0,
+            col: *col.start(),
+            stride: col.count(),
         }
     }
 }
@@ -21,11 +33,12 @@ impl<'a> PixelPositionIterator<'a> {
 impl<'a> Iterator for PixelPositionIterator<'a> {
     type Item = (usize, usize);
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let (col, row, offset) = if let Some(&offset) = self.pixel_shifts.get(self.row) {
             self.row += 1;
             (self.col as isize, self.row - 1, offset as isize)
-        } else if self.col < self.total_cols - 1 {
+        } else if self.col < self.last_col {
             self.row = 1;
             self.col += 1;
             (self.col as isize, 0, self.pixel_shifts[0] as isize)
@@ -36,7 +49,7 @@ impl<'a> Iterator for PixelPositionIterator<'a> {
         let col_shift = col + offset;
 
         Some((
-            (col_shift + self.total_cols as isize) as usize % self.total_cols,
+            (col_shift + self.stride as isize) as usize % self.stride,
             row,
         ))
     }
@@ -49,12 +62,7 @@ mod tests {
 
     #[test]
     fn fill_all_fields() {
-        let iter = PixelPositionIterator {
-            col: 0,
-            row: 0,
-            pixel_shifts: &[1, -1, 3],
-            total_cols: 4,
-        };
+        let iter = PixelPositionIterator::new(&[1, -1, 3], 0..=3);
 
         let mut data = [0; 12];
         for (col, row) in iter {
@@ -65,12 +73,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        let iter = PixelPositionIterator {
-            col: 0,
-            row: 0,
-            pixel_shifts: &[1, -1],
-            total_cols: 3,
-        };
+        let iter = PixelPositionIterator::new(&[1, -1], 0..=2);
 
         #[rustfmt::skip]
         assert_eq!(
@@ -83,12 +86,7 @@ mod tests {
 
     #[test]
     fn upper_overflow() {
-        let iter = PixelPositionIterator {
-            col: 0,
-            row: 0,
-            pixel_shifts: &[1],
-            total_cols: 3,
-        };
+        let iter = PixelPositionIterator::new(&[1], 0..=2);
 
         #[rustfmt::skip]
         assert_eq!(
