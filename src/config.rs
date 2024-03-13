@@ -1,4 +1,4 @@
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, ops::RangeInclusive, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +32,18 @@ pub struct LidarDataFormat {
     pub pixel_shift_by_row: Box<[i8]>,
     pub column_window: (u16, u16),
     pub udp_profile_lidar: LidarProfile,
+}
+
+impl LidarDataFormat {
+    pub fn shift_range(&self) -> RangeInclusive<i8> {
+        let (min, max) = self
+            .pixel_shift_by_row
+            .into_iter()
+            .fold((i8::MAX, i8::MIN), |(acc_min, acc_max), v| {
+                (acc_min.min(*v), acc_max.max(*v))
+            });
+        min..=max
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]

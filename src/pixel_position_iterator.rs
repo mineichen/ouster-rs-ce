@@ -4,11 +4,9 @@ use crate::OusterConfig;
 
 pub struct PixelPositionIterator<'a> {
     pixel_shifts: &'a [i8],
-
-    last_col: usize,
     col: usize,
     row: usize,
-    stride: usize,
+    col_len: usize,
 }
 
 impl<'a> PixelPositionIterator<'a> {
@@ -20,12 +18,12 @@ impl<'a> PixelPositionIterator<'a> {
         )
     }
     pub fn new(pixel_shifts: &'a [i8], col: RangeInclusive<usize>) -> Self {
+        let len = col.end() - col.start() + 1;
         Self {
             pixel_shifts,
-            last_col: *col.end(),
             row: 0,
-            col: *col.start(),
-            stride: col.count(),
+            col: 0,
+            col_len: len,
         }
     }
 }
@@ -38,7 +36,7 @@ impl<'a> Iterator for PixelPositionIterator<'a> {
         let (col, row, offset) = if let Some(&offset) = self.pixel_shifts.get(self.row) {
             self.row += 1;
             (self.col as isize, self.row - 1, offset as isize)
-        } else if self.col < self.last_col {
+        } else if self.col < self.col_len - 1 {
             self.row = 1;
             self.col += 1;
             (self.col as isize, 0, self.pixel_shifts[0] as isize)
@@ -49,7 +47,7 @@ impl<'a> Iterator for PixelPositionIterator<'a> {
         let col_shift = col + offset;
 
         Some((
-            (col_shift + self.stride as isize) as usize % self.stride,
+            (col_shift + self.col_len as isize) as usize % self.col_len,
             row,
         ))
     }
@@ -66,9 +64,10 @@ mod tests {
 
         let mut data = [0; 12];
         for (col, row) in iter {
+            println!("{col} {row}");
             data[row + col * 3] = 1;
         }
-        assert!(data.iter().all(|&x| x == 1));
+        assert!(data.iter().all(|&x| x == 1), "{data:?}");
     }
 
     #[test]
