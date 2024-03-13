@@ -3,7 +3,8 @@ use std::{num::Saturating, sync::Arc};
 use bytemuck::Zeroable;
 
 use crate::{
-    profile::Profile, OusterConfig, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo,
+    profile::Profile, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo, ValidOusterConfig,
+    ValidWindow,
 };
 
 #[derive(Clone)]
@@ -48,14 +49,11 @@ pub struct AggregatorStatistics {
 }
 
 impl<TProfile: Profile> Aggregator<TProfile> {
-    pub fn new(column_window: (u16, u16)) -> Self {
-        let start_measurement_id = column_window.0 / TProfile::COLUMNS as u16;
-        let required_packets = (column_window.1 as f32 / TProfile::COLUMNS as f32).ceil() as usize
-            - start_measurement_id as usize;
-
+    pub fn new(valid_config: &ValidWindow<TProfile>) -> Self {
+        let required_packets = valid_config.required_packets;
         Self {
-            start_measurement_id,
-            measurements_per_rotation: required_packets as usize * TProfile::COLUMNS,
+            start_measurement_id: valid_config.start_measurement_id,
+            measurements_per_rotation: required_packets * TProfile::COLUMNS,
             entry_active: AggregatorEntry::new(required_packets),
             entry_other: AggregatorEntry::new(required_packets),
             entry_out: Arc::new(AggregatorEntry::new(required_packets)),
@@ -79,11 +77,6 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             .entry_active
             .count_packets
             .min(self.missing_packets.len())] += 1;
-        // r[self
-        //     .entry_before
-        //     .try_lock()
-        //     .map(|x| x.complete.min(self.missing_packets.len()))
-        //     .unwrap_or(default)] += 1;
 
         r
     }
@@ -198,7 +191,7 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
     pub fn iter_flat<'a, T>(
         &'a self,
-        config: &OusterConfig,
+        config: &ValidOusterConfig<TProfile>,
         mut map: impl FnMut(&<TProfile as Profile>::Channel, u32) -> T + 'a,
     ) -> impl Iterator<Item = T> + '_ {
         let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
@@ -212,14 +205,14 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
     pub fn iter_infos(
         &self,
-        config: &OusterConfig,
+        config: &ValidOusterConfig<TProfile>,
     ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + '_ {
         self.iter_flat(config, |point, nvec| point.get_infos(nvec))
     }
 
     pub fn iter_infos_primary(
         &self,
-        config: &OusterConfig,
+        config: &ValidOusterConfig<TProfile>,
     ) -> impl Iterator<Item = PrimaryPointInfo<<TProfile::Channel as PointInfos>::Signal>> + '_
     {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
@@ -228,7 +221,7 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
 #[cfg(test)]
 mod tests {
-    use crate::Dual64OusterPacket;
+    use crate::{Dual64OusterPacket, ValidWindow};
 
     use super::Aggregator;
 
@@ -239,7 +232,7 @@ mod tests {
             x.header.frame_id = i / 64;
             x
         });
-        let mut aggregator = Aggregator::new((0, 1023));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
 
         for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
@@ -251,7 +244,7 @@ mod tests {
 
     #[test]
     fn ignore_old_frame() {
-        let mut aggregator = Aggregator::new((0, 1023));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
         let mut packet = Dual64OusterPacket::default();
         packet.header.frame_id = 10;
         aggregator.put_data_value(packet);
@@ -273,7 +266,7 @@ mod tests {
 
             x
         });
-        let mut aggregator = Aggregator::new((0, 1023));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
 
         for (i, data) in (&mut input).take(64 + 9).enumerate() {
             assert!(aggregator.put_data_value(data).is_none(), "Item {i}");

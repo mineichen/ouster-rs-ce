@@ -1,9 +1,25 @@
-use std::{f32::consts::PI, ops::RangeInclusive, sync::Arc};
+use std::{f32::consts::PI, marker::PhantomData, sync::Arc};
 
-use crate::config::{OusterConfig, PolarPoint};
+use crate::{Profile, ValidOusterConfig, ValidWindow};
 
-impl CartesianIterator<Arc<[(f32, f32)]>> {
-    pub fn new_cheap_cloneable_from_config(config: &OusterConfig) -> Self {
+#[derive(Debug)]
+pub struct PolarPoint {
+    pub translation: (f32, f32, f32),
+    pub azimuth: f32,
+    pub roh: f32,
+}
+
+impl PolarPoint {
+    pub fn calc_xyz(&self, distance: f32) -> (f32, f32, f32) {
+        let x = distance * self.azimuth.cos() * self.roh.cos() + self.translation.0;
+        let y = distance * self.azimuth.sin() * self.roh.cos() + self.translation.1;
+        let z = distance * self.roh.sin() + self.translation.2;
+        (x, y, z)
+    }
+}
+
+impl<TProfile: Profile> CartesianIterator<TProfile, Arc<[(f32, f32)]>> {
+    pub fn new_cheap_cloneable_from_config(config: &ValidOusterConfig<TProfile>) -> Self {
         let azimuth_roh_lut = config
             .beam_intrinsics
             .beam_azimuth_angles
@@ -17,7 +33,7 @@ impl CartesianIterator<Arc<[(f32, f32)]>> {
         Self::new(
             azimuth_roh_lut,
             config.lidar_data_format.columns_per_frame,
-            config.lidar_data_format.column_window.0..=config.lidar_data_format.column_window.1,
+            config.lidar_data_format.column_window.clone(),
             offset_x,
             offset_z,
         )
@@ -25,31 +41,32 @@ impl CartesianIterator<Arc<[(f32, f32)]>> {
 }
 
 #[derive(Clone)]
-pub struct CartesianIterator<TSlice> {
+pub struct CartesianIterator<TProfile, TSlice> {
     azimuth_alt: TSlice,
     azi_pos: usize,
     alt_pos: usize,
     cols_per_frame: u16,
     translation: (f32, f32, f32),
-    cols: RangeInclusive<u16>,
+    cols: ValidWindow<TProfile>,
     encoder_angle: f32,
     offset_x: f32,
+    phantom: PhantomData<TProfile>,
 }
 
-impl<TSlice> CartesianIterator<TSlice>
+impl<TProfile: Profile, TSlice> CartesianIterator<TProfile, TSlice>
 where
     TSlice: AsRef<[(f32, f32)]>,
 {
     fn new(
         azimuth_alt: TSlice,
         cols_per_frame: u16,
-        cols: RangeInclusive<u16>,
+        cols: ValidWindow<TProfile>,
         offset_x: f32,
         offset_z: f32,
     ) -> Self {
         assert!(!azimuth_alt.as_ref().is_empty());
 
-        let azi_pos = *cols.start() as _;
+        let azi_pos = cols.start();
         let encoder_angle = 2. * PI * (1. - (azi_pos as f32 / cols_per_frame as f32));
         Self {
             azimuth_alt,
@@ -60,11 +77,12 @@ where
             cols,
             encoder_angle,
             offset_x,
+            phantom: PhantomData,
         }
     }
 }
 
-impl<TSlice> Iterator for CartesianIterator<TSlice>
+impl<TProfile: Profile, TSlice> Iterator for CartesianIterator<TProfile, TSlice>
 where
     TSlice: AsRef<[(f32, f32)]>,
 {
@@ -83,7 +101,7 @@ where
                 azimuth: self.encoder_angle + azi,
                 roh: alt,
             })
-        } else if self.azi_pos != *self.cols.end() as usize {
+        } else if self.azi_pos != self.cols.end() {
             self.azi_pos += 1;
             self.encoder_angle =
                 2. * PI * (1. - (self.azi_pos as f32 / self.cols_per_frame as f32));
@@ -104,12 +122,20 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use crate::DualProfile;
+
     use super::*;
 
     #[test]
     fn iter_all() {
-        let x = CartesianIterator::new([(0.1, 0.2), (0.3, 0.4)], 2, 0..=1, 10., 15.)
-            .collect::<Vec<_>>();
+        let x = CartesianIterator::new(
+            [(0.1, 0.2), (0.3, 0.4)],
+            2,
+            ValidWindow::<DualProfile<1, 3>>::new((0, 1)),
+            10.,
+            15.,
+        )
+        .collect::<Vec<_>>();
         assert_eq!(
             4,
             x.iter()

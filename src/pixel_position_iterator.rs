@@ -1,6 +1,4 @@
-use std::ops::RangeInclusive;
-
-use crate::OusterConfig;
+use crate::{Profile, ValidLidarDataFormat};
 
 pub struct PixelPositionIterator<'a> {
     pixel_shifts: &'a [i8],
@@ -10,20 +8,17 @@ pub struct PixelPositionIterator<'a> {
 }
 
 impl<'a> PixelPositionIterator<'a> {
-    pub fn from_config(config: &'a OusterConfig) -> Self {
-        Self::new(
-            &config.lidar_data_format.pixel_shift_by_row,
-            (config.lidar_data_format.column_window.0 as usize)
-                ..=(config.lidar_data_format.column_window.1 as usize),
-        )
+    pub fn from_config<TProfile: Profile>(config: &'a ValidLidarDataFormat<TProfile>) -> Self {
+        let window = &config.column_window;
+
+        Self::new(&config.pixel_shift_by_row, window.len())
     }
-    pub fn new(pixel_shifts: &'a [i8], col: RangeInclusive<usize>) -> Self {
-        let len = col.end() - col.start() + 1;
+    pub fn new(pixel_shifts: &'a [i8], col_len: usize) -> Self {
         Self {
             pixel_shifts,
             row: 0,
             col: 0,
-            col_len: len,
+            col_len,
         }
     }
 }
@@ -60,7 +55,7 @@ mod tests {
 
     #[test]
     fn fill_all_fields() {
-        let iter = PixelPositionIterator::new(&[1, -1, 3], 0..=3);
+        let iter = PixelPositionIterator::new(&[1, -1, 3], 4);
 
         let mut data = [0; 12];
         for (col, row) in iter {
@@ -72,12 +67,12 @@ mod tests {
 
     #[test]
     fn simple() {
-        let iter = PixelPositionIterator::new(&[1, -1], 0..=2);
+        let iter = PixelPositionIterator::new(&[1, -1], 3);
 
         #[rustfmt::skip]
         assert_eq!(
-            vec![(1, 0), (2, 1), 
-                 (2, 0), (0, 1), 
+            vec![(1, 0), (2, 1),
+                 (2, 0), (0, 1),
                  (0, 0), (1, 1)],
             iter.inspect(|a| println!("{a:?}")).collect::<Vec<_>>()
         );
@@ -85,12 +80,12 @@ mod tests {
 
     #[test]
     fn upper_overflow() {
-        let iter = PixelPositionIterator::new(&[1], 0..=2);
+        let iter = PixelPositionIterator::new(&[1], 3);
 
         #[rustfmt::skip]
         assert_eq!(
-            vec![(1, 0), 
-                 (2, 0), 
+            vec![(1, 0),
+                 (2, 0),
                  (0, 0)],
             iter.inspect(|a| println!("{a:?}")).collect::<Vec<_>>()
         );

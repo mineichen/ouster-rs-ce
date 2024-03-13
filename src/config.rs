@@ -1,6 +1,8 @@
-use std::{borrow::Cow, ops::RangeInclusive, str::FromStr};
+use std::{borrow::Cow, marker::PhantomData, ops::RangeInclusive, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+
+use crate::Profile;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OusterConfig {
@@ -9,21 +11,41 @@ pub struct OusterConfig {
     pub lidar_data_format: LidarDataFormat,
 }
 
-#[derive(Debug)]
-pub struct PolarPoint {
-    pub translation: (f32, f32, f32),
-    pub azimuth: f32,
-    pub roh: f32,
+/// Mustn't contain contradicting information like (window-size which doesnt't match Profile::Columns)
+pub struct ValidOusterConfig<TProfile> {
+    pub beam_intrinsics: BeamIntrinsics,
+    pub config_params: ConfigParams,
+    pub lidar_data_format: ValidLidarDataFormat<TProfile>,
+    phantom: PhantomData<TProfile>,
 }
 
-impl PolarPoint {
-    pub fn calc_xyz(&self, distance: f32) -> (f32, f32, f32) {
-        let x = distance * self.azimuth.cos() * self.roh.cos() + self.translation.0;
-        let y = distance * self.azimuth.sin() * self.roh.cos() + self.translation.1;
-        let z = distance * self.roh.sin() + self.translation.2;
-        (x, y, z)
+impl<T: Profile> TryFrom<OusterConfig> for ValidOusterConfig<T> {
+    type Error = InvalidConfig;
+
+    fn try_from(value: OusterConfig) -> Result<Self, Self::Error> {
+        Ok(Self {
+            beam_intrinsics: value.beam_intrinsics,
+            config_params: value.config_params,
+            lidar_data_format: value.lidar_data_format.try_into()?,
+            phantom: PhantomData,
+        })
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("{reason}")]
+pub struct InvalidConfig {
+    reason: String,
+}
+
+impl InvalidConfig {
+    fn new(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LidarDataFormat {
     pub columns_per_packet: u8,
@@ -34,16 +56,55 @@ pub struct LidarDataFormat {
     pub udp_profile_lidar: LidarProfile,
 }
 
-impl LidarDataFormat {
+pub struct ValidLidarDataFormat<T> {
+    pub columns_per_frame: u16,
+    pub pixel_shift_by_row: Box<[i8]>,
+    pub column_window: ValidWindow<T>,
+    pub udp_profile_lidar: LidarProfile,
+    phantom: PhantomData<T>,
+}
+
+impl<T: Profile> TryFrom<LidarDataFormat> for ValidLidarDataFormat<T> {
+    type Error = InvalidConfig;
+
+    fn try_from(value: LidarDataFormat) -> Result<Self, Self::Error> {
+        if value.pixels_per_column as usize != T::LAYERS {
+            return Err(InvalidConfig::new(format!(
+                "Expected pixels_per_column to be {}, got {}",
+                T::LAYERS,
+                value.pixels_per_column
+            )));
+        }
+        if value.columns_per_packet as usize != T::COLUMNS {
+            return Err(InvalidConfig::new(format!(
+                "Expected columns_per_packet to be {}, got {}",
+                T::LAYERS,
+                value.columns_per_packet
+            )));
+        }
+
+        Ok(ValidLidarDataFormat {
+            columns_per_frame: value.columns_per_frame,
+            pixel_shift_by_row: value.pixel_shift_by_row,
+            column_window: ValidWindow::new(value.column_window),
+            udp_profile_lidar: value.udp_profile_lidar,
+            phantom: PhantomData,
+        })
+    }
+}
+
+impl<TProfile> ValidLidarDataFormat<TProfile> {
     pub fn shift_range(&self) -> RangeInclusive<i8> {
         let (min, max) = self
             .pixel_shift_by_row
-            .into_iter()
+            .iter()
             .fold((i8::MAX, i8::MIN), |(acc_min, acc_max), v| {
                 (acc_min.min(*v), acc_max.max(*v))
             });
         min..=max
     }
+
+    pub const fn columns_per_frame(&self) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -87,6 +148,39 @@ impl FromStr for LidarProfile {
             "RNG19_RFL8_SIG16_NIR16_DUAL" => Ok(Self::DualReturn),
             s => Err(format!("Can't parse '{}'into LidarProfile", s).into()),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ValidWindow<TProfile> {
+    pub(crate) start_measurement_id: u16,
+    pub(crate) required_packets: usize,
+    phantom: PhantomData<TProfile>,
+}
+
+impl<TProfile: Profile> ValidWindow<TProfile> {
+    pub fn new(column_window: (u16, u16)) -> Self {
+        let start_measurement_id = (column_window.0 / TProfile::COLUMNS as u16) as _;
+        let required_packets = ((column_window.1 + 1) as f32 / TProfile::COLUMNS as f32).ceil()
+            as usize
+            - start_measurement_id as usize;
+        Self {
+            start_measurement_id,
+            required_packets,
+            phantom: PhantomData,
+        }
+    }
+
+    pub const fn start(&self) -> usize {
+        self.start_measurement_id as usize * TProfile::COLUMNS
+    }
+
+    pub const fn len(&self) -> usize {
+        self.required_packets * TProfile::COLUMNS
+    }
+
+    pub const fn end(&self) -> usize {
+        (self.start_measurement_id as usize + self.required_packets - 1) * TProfile::COLUMNS
     }
 }
 

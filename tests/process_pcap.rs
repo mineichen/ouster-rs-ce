@@ -4,7 +4,7 @@ use std::{io::Cursor, path::PathBuf};
 
 use ouster_rs_ce::{
     Aggregator, CartesianIterator, DualProfile, LowDataProfile, OusterConfig, OusterPacket,
-    PixelPositionIterator, Profile, SingleProfile,
+    PixelPositionIterator, Profile, SingleProfile, ValidOusterConfig,
 };
 
 const UDP_HEADER_SIZE: usize = 42;
@@ -64,7 +64,8 @@ fn ouster_pcd_converter<TProfile: Profile>(
     let target = test_files.join("demo.pcd");
 
     let data = std::fs::read(test_files.join(test_json_path))?;
-    let config: OusterConfig = serde_json::from_slice(&data)?;
+    let config = serde_json::from_slice::<OusterConfig>(&data)?;
+    let config: ValidOusterConfig<TProfile> = config.try_into()?;
     let mut cap = Capture::from_file(test_files.join(test_pcap_file))?;
     cap.filter("udp", true)?;
 
@@ -72,8 +73,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
     let mut max = f32::MIN;
 
     let mut skip_complete = 170;
-    let scan_width: u16 =
-        config.lidar_data_format.column_window.1 - config.lidar_data_format.column_window.0 + 1;
+    let scan_width: u16 = config.lidar_data_format.column_window.len() as _;
 
     //const CAPTURE_POINTS: usize = 70974464;
     const CAPTURE_POINTS: usize = 151072;
@@ -88,15 +88,14 @@ fn ouster_pcd_converter<TProfile: Profile>(
     .build_from_writer(Cursor::new(&mut buf))?;
 
     let mut image = vec![0u8; scan_width as usize * TProfile::LAYERS];
-    let mut aggregator = Aggregator::new(config.lidar_data_format.column_window);
+    let mut aggregator = Aggregator::new(&config.lidar_data_format.column_window);
     let cartesian = CartesianIterator::new_cheap_cloneable_from_config(&config);
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
-        if slice.len() != std::mem::size_of::<OusterPacket<TProfile>>() {
+        let Ok(lidar_packet) = OusterPacket::<TProfile>::from_maybe_unaligned(slice) else {
             continue;
-        }
-        let lidar_packet = OusterPacket::<TProfile>::from_maybe_unaligned(slice)?;
+        };
         if let Some(complete_buf) = aggregator.put_data_value(lidar_packet) {
             if skip_complete > 0 {
                 skip_complete -= 1;
@@ -106,7 +105,9 @@ fn ouster_pcd_converter<TProfile: Profile>(
             for ((p, polar_point), (pixel_col, pixel_row)) in complete_buf
                 .iter_infos_primary(&config)
                 .zip(cartesian.clone())
-                .zip(PixelPositionIterator::from_config(&config))
+                .zip(PixelPositionIterator::from_config(
+                    &config.lidar_data_format,
+                ))
             {
                 let (x, y, z) = polar_point.calc_xyz(p.distance as f32);
 
