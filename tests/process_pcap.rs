@@ -102,13 +102,19 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 continue;
             }
 
-            for ((p, polar_point), (pixel_col, pixel_row)) in complete_buf
+            for (i, ((p, polar_point), (pixel_col, pixel_row))) in complete_buf
                 .iter_infos_primary(&config)
                 .zip(cartesian.clone())
                 .zip(PixelPositionIterator::from_config(
                     &config.lidar_data_format,
                 ))
+                .enumerate()
             {
+                let dist2 = complete_buf
+                    .get_row_first_infos_primary_slow(&config, i)
+                    .distance;
+                assert_eq!(dist2, p.distance);
+
                 let (x, y, z) = polar_point.calc_xyz(p.distance as f32);
 
                 let x = x.min(20_000.).max(-20000.);

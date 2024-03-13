@@ -217,6 +217,24 @@ impl<TProfile: Profile> CompleteData<TProfile> {
     {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
     }
+
+    pub fn get_row_first_infos_primary_slow(
+        &self,
+        config: &ValidOusterConfig<TProfile>,
+        index: usize,
+    ) -> PrimaryPointInfo<<TProfile::Channel as PointInfos>::Signal> {
+        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
+        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
+        let n_vec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
+
+        let column_idx = index / TProfile::LAYERS;
+        let column_idx_outer = column_idx % TProfile::COLUMNS;
+        let column_idx_inner = column_idx / TProfile::COLUMNS;
+        let row_idx = index % TProfile::LAYERS;
+        let outer = &self.0.complete_buf[column_idx_inner];
+        let column_inner = &outer.columns.as_ref()[column_idx_outer];
+        column_inner.channels.as_ref()[row_idx].get_primary_infos(n_vec)
+    }
 }
 
 #[cfg(test)]

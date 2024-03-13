@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData, ops::RangeInclusive, str::FromStr};
+use std::{borrow::Cow, marker::PhantomData, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +63,12 @@ pub struct ValidLidarDataFormat<T> {
     pub udp_profile_lidar: LidarProfile,
     phantom: PhantomData<T>,
 }
+impl<T: Profile> ValidLidarDataFormat<T> {
+    pub fn calc_complete_cols_aligned(&self, alignment: usize) -> (usize, usize) {
+        self.column_window
+            .calc_complete_cols_aligned(&self.pixel_shift_by_row, alignment)
+    }
+}
 
 impl<T: Profile> TryFrom<LidarDataFormat> for ValidLidarDataFormat<T> {
     type Error = InvalidConfig;
@@ -83,28 +89,16 @@ impl<T: Profile> TryFrom<LidarDataFormat> for ValidLidarDataFormat<T> {
             )));
         }
 
+        let column_window = ValidWindow::new(value.column_window);
+
         Ok(ValidLidarDataFormat {
             columns_per_frame: value.columns_per_frame,
             pixel_shift_by_row: value.pixel_shift_by_row,
-            column_window: ValidWindow::new(value.column_window),
+            column_window,
             udp_profile_lidar: value.udp_profile_lidar,
             phantom: PhantomData,
         })
     }
-}
-
-impl<TProfile> ValidLidarDataFormat<TProfile> {
-    pub fn shift_range(&self) -> RangeInclusive<i8> {
-        let (min, max) = self
-            .pixel_shift_by_row
-            .iter()
-            .fold((i8::MAX, i8::MIN), |(acc_min, acc_max), v| {
-                (acc_min.min(*v), acc_max.max(*v))
-            });
-        min..=max
-    }
-
-    pub const fn columns_per_frame(&self) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -182,6 +176,28 @@ impl<TProfile: Profile> ValidWindow<TProfile> {
     pub const fn end(&self) -> usize {
         (self.start_measurement_id as usize + self.required_packets - 1) * TProfile::COLUMNS
     }
+
+    /// (skip_first, take)
+    pub fn calc_complete_cols_aligned(
+        &self,
+        pixel_shift_by_row: &[i8],
+        alignment: usize,
+    ) -> (usize, usize) {
+        let (min, max) = pixel_shift_by_row
+            .iter()
+            .fold((isize::MAX, isize::MIN), |(acc_min, acc_max), v| {
+                (acc_min.min(*v as isize), acc_max.max(*v as isize))
+            });
+
+        let cut_start = min.abs() as usize;
+        let cut_len = self.len() - max as usize - cut_start;
+        let modulo = cut_len % alignment;
+        let modulo_half = modulo / 2;
+
+        let skip_first = cut_start + modulo_half;
+        let take = cut_len - modulo;
+        (skip_first, take)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -216,5 +232,38 @@ impl LidarMode {
             LidarMode::Mode1024x10 | LidarMode::Mode1024x20 => 1024,
             LidarMode::Mode2048x10 => 2048,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{DualProfile, ValidWindow};
+
+    type TestProfile = DualProfile<16, 128>;
+
+    #[test]
+    fn calc_17_remaining() {
+        let res =
+            ValidWindow::<TestProfile>::new((16, 159)).calc_complete_cols_aligned(&[-64, 63], 16);
+        assert_eq!((64, 16), res);
+    }
+
+    #[test]
+    fn calc_33_remaining() {
+        let res =
+            ValidWindow::<TestProfile>::new((16, 160)).calc_complete_cols_aligned(&[-64, 63], 16);
+        assert_eq!((64, 32), res);
+    }
+    #[test]
+    fn calc_32_remaining() {
+        let res =
+            ValidWindow::<TestProfile>::new((16, 160)).calc_complete_cols_aligned(&[-64, 64], 16);
+        assert_eq!((64, 32), res);
+    }
+    #[test]
+    fn calc_complete_cols_evenly_aligned() {
+        let res =
+            ValidWindow::<TestProfile>::new((16, 160)).calc_complete_cols_aligned(&[-64, 60], 16);
+        assert_eq!((66, 32), res);
     }
 }
