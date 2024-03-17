@@ -218,6 +218,9 @@ impl<TProfile: Profile> CompleteData<TProfile> {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
     }
 
+    // get_unchecked() didn't improve performance and neither did moving offsets outside
+    // the compiler optimized it out during inline. inline(always) makes sure optimization can be made
+    #[inline(always)]
     pub fn get_row_first_infos_primary_slow(
         &self,
         config: &ValidOusterConfig<TProfile>,
