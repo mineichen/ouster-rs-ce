@@ -194,13 +194,11 @@ impl<TProfile: Profile> CompleteData<TProfile> {
         config: &ValidOusterConfig<TProfile>,
         mut map: impl FnMut(&<TProfile as Profile>::Channel, u32) -> T + 'a,
     ) -> impl Iterator<Item = T> + '_ {
-        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
-        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
-        let nvec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
+        let n_vec = config.n_vec();
         self.iter()
             .flat_map(|lidar_packet| lidar_packet.columns.as_ref().iter())
             .flat_map(move |column| column.channels.as_ref().iter())
-            .map(move |x| map(x, nvec))
+            .map(move |x| map(x, n_vec))
     }
 
     pub fn iter_infos(
@@ -218,18 +216,14 @@ impl<TProfile: Profile> CompleteData<TProfile> {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
     }
 
-    // get_unchecked() didn't improve performance and neither did moving offsets outside
+    // get_unchecked() didn't improve performance
     // the compiler optimized it out during inline. inline(always) makes sure optimization can be made
     #[inline(always)]
-    pub fn get_row_first_infos_primary_slow(
+    pub fn get_row_first_infos_primary(
         &self,
-        config: &ValidOusterConfig<TProfile>,
         index: usize,
+        n_vec: u32,
     ) -> PrimaryPointInfo<<TProfile::Channel as PointInfos>::Signal> {
-        let offset_x = config.beam_intrinsics.beam_to_lidar_transform[4 + 3];
-        let offset_z = config.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
-        let n_vec = (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32;
-
         let column_idx = index / TProfile::LAYERS;
         let column_idx_outer = column_idx % TProfile::COLUMNS;
         let column_idx_inner = column_idx / TProfile::COLUMNS;

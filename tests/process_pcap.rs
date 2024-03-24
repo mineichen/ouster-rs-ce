@@ -90,6 +90,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
     let mut image = vec![0u8; scan_width as usize * TProfile::LAYERS];
     let mut aggregator = Aggregator::new(&config.lidar_data_format.column_window);
     let cartesian = CartesianIterator::new_cheap_cloneable_from_config(&config);
+    let n_vec = config.n_vec();
 
     while let Ok(packet) = cap.next_packet() {
         let slice = &packet.data[UDP_HEADER_SIZE..];
@@ -110,9 +111,7 @@ fn ouster_pcd_converter<TProfile: Profile>(
                 ))
                 .enumerate()
             {
-                let dist2 = complete_buf
-                    .get_row_first_infos_primary_slow(&config, i)
-                    .distance;
+                let dist2 = complete_buf.get_row_first_infos_primary(i, n_vec).distance;
                 assert_eq!(dist2, p.distance);
 
                 let (x, y, z) = polar_point.calc_xyz(p.distance as f32);

@@ -19,6 +19,14 @@ pub struct ValidOusterConfig<TProfile> {
     phantom: PhantomData<TProfile>,
 }
 
+impl<TProfile> ValidOusterConfig<TProfile> {
+    pub fn n_vec(&self) -> u32 {
+        let offset_x = self.beam_intrinsics.beam_to_lidar_transform[0 * 4 + 3];
+        let offset_z = self.beam_intrinsics.beam_to_lidar_transform[2 * 4 + 3];
+        (offset_x * offset_x + offset_z * offset_z).sqrt().round() as u32
+    }
+}
+
 impl<T: Profile> TryFrom<OusterConfig> for ValidOusterConfig<T> {
     type Error = InvalidConfig;
 
