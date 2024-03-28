@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData, str::FromStr};
+use std::{borrow::Cow, marker::PhantomData, net::Ipv4Addr, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -218,6 +218,8 @@ pub struct BeamIntrinsics {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ConfigParams {
     pub lidar_mode: LidarMode,
+    pub udp_dest: Ipv4Addr,
+    pub udp_port_lidar: u16,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LidarMode {
