@@ -19,6 +19,14 @@ pub enum ValidateConfigParamsError {
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct ConfigParams(ConfigParamsRaw);
 
+impl std::ops::Deref for ConfigParams {
+    type Target = ConfigParamsRaw;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl<'de> Deserialize<'de> for ConfigParams {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
