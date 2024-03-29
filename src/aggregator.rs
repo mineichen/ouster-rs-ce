@@ -119,6 +119,10 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             / TProfile::COLUMNS
             - self.start_measurement_id as usize;
 
+        if idx >= self.entry_active.complete_buf.len() {
+            return None;
+        }
+
         if self.entry_active.frame_id == self.tmp.header.frame_id {
             std::mem::swap(&mut self.entry_active.complete_buf[idx], &mut self.tmp);
             self.entry_active.count_packets += 1;
