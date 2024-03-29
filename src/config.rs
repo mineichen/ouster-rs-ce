@@ -217,6 +217,7 @@ pub struct BeamIntrinsics {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ConfigParams {
+    pub azimuth_window: [u32; 2],
     pub lidar_mode: LidarMode,
     pub udp_dest: Ipv4Addr,
     pub udp_port_lidar: u16,

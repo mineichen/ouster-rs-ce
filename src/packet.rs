@@ -80,8 +80,8 @@ impl<TProfile: Profile> OusterPacket<TProfile> {
 #[derive(thiserror::Error, Debug)]
 #[error("Expected {expected}, got {actual}")]
 pub struct SizeMismatchError {
-    expected: usize,
-    actual: usize,
+    pub expected: usize,
+    pub actual: usize,
 }
 
 #[repr(C)]
