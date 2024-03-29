@@ -39,6 +39,12 @@ impl<'de> Deserialize<'de> for ConfigParams {
     }
 }
 
+impl From<ConfigParams> for ConfigParamsRaw {
+    fn from(value: ConfigParams) -> Self {
+        value.0
+    }
+}
+
 impl TryFrom<ConfigParamsRaw> for ConfigParams {
     type Error = ValidateConfigParamsError;
 
