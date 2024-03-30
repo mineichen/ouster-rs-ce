@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData, str::FromStr};
+use std::{borrow::Cow, fmt::Debug, marker::PhantomData, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -164,6 +164,16 @@ pub struct ValidWindow<TProfile> {
     phantom: PhantomData<TProfile>,
 }
 
+impl<T> Debug for ValidWindow<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValidWindow")
+            .field("start_measurement_id", &self.start_measurement_id)
+            .field("required_packets", &self.required_packets)
+            .field("typeof<T>", &std::any::type_name::<T>())
+            .finish()
+    }
+}
+
 impl<TProfile: Profile> ValidWindow<TProfile> {
     pub fn new(column_window: (u16, u16)) -> Self {
         let start_measurement_id = (column_window.0 / TProfile::COLUMNS as u16) as _;
@@ -202,7 +212,10 @@ impl<TProfile: Profile> ValidWindow<TProfile> {
             });
 
         let cut_start = min.unsigned_abs();
-        let cut_len = self.len() - max as usize - cut_start;
+        let cut_len = self
+            .len()
+            .saturating_sub(max as usize)
+            .saturating_sub(cut_start);
         let modulo = cut_len % alignment;
         let modulo_half = modulo / 2;
 
@@ -222,7 +235,7 @@ pub struct BeamIntrinsics {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DualProfile, ValidWindow};
+    use crate::{DualProfile, LowDataProfile, ValidWindow};
 
     type TestProfile = DualProfile<16, 128>;
 
@@ -250,5 +263,11 @@ mod tests {
         let res =
             ValidWindow::<TestProfile>::new((16, 160)).calc_complete_cols_aligned(&[-64, 60], 16);
         assert_eq!((66, 32), res);
+    }
+
+    #[test]
+    fn calc_to_355_doesnt_panic() {
+        let w = ValidWindow::<LowDataProfile<13, 128>>::new((0, 1));
+        assert_eq!((32, 0), w.calc_complete_cols_aligned(&[32; 128], 16));
     }
 }
