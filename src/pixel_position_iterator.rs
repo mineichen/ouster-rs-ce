@@ -16,9 +16,9 @@ impl<'a> PixelPositionIterator<'a> {
     pub fn new(pixel_shifts: &'a [i8], col_len: usize) -> Self {
         Self {
             pixel_shifts,
-            row: 0,
-            col: 0,
-            col_len,
+            row: if col_len == 0 { usize::MAX } else { 0 },
+            col: if col_len == 0 { usize::MAX } else { 0 },
+            col_len: col_len.max(1),
         }
     }
 }
@@ -89,5 +89,9 @@ mod tests {
                  (0, 0)],
             iter.inspect(|a| println!("{a:?}")).collect::<Vec<_>>()
         );
+    }
+    #[test]
+    fn col_len_zero_returns_empty_iterator() {
+        assert_eq!(0, PixelPositionIterator::new(&[1], 0).count());
     }
 }

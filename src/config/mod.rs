@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_to_355_doesnt_panic() {
+    fn small_doesnt_panic() {
         let w = ValidWindow::<LowDataProfile<13, 128>>::new((0, 1));
         assert_eq!((32, 0), w.calc_complete_cols_aligned(&[32; 128], 16));
     }
