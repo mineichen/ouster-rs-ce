@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use bytemuck::Zeroable;
 
@@ -111,15 +111,19 @@ impl<TProfile: Profile> Default for Column<TProfile> {
 #[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct ChannelsHeader {
     // Single u64 would force ChannelsHeader to be 64bit aligned
-    pub timestamp_a: u32,
-    pub timestamp_b: u32,
+    timestamp_a: u32,
+    timestamp_b: u32,
     pub measurement_id: u16,
     pub status_and_reserve: u16,
 }
 
 impl ChannelsHeader {
-    pub fn timestamp() -> u64 {
-        todo!()
+    pub fn timestamp(&self) -> Duration {
+        let mut bytes = [0; 8];
+
+        bytes[0..4].copy_from_slice(&self.timestamp_a.to_le_bytes());
+        bytes[4..8].copy_from_slice(&self.timestamp_b.to_le_bytes());
+        Duration::from_nanos(u64::from_le_bytes(bytes))
     }
 }
 
