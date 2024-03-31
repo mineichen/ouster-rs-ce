@@ -59,6 +59,11 @@ impl<TProfile: Profile> OusterPacket<TProfile> {
         unsafe { &*(buffer.as_ptr() as *const Self) }
     }
 
+    pub fn as_slice(&self) -> &[u8] {
+        let this: *const u8 = std::ptr::from_ref(self) as _;
+        unsafe { std::slice::from_raw_parts(this, std::mem::size_of::<Self>()) }
+    }
+
     pub fn from_maybe_unaligned(buffer: &[u8]) -> Result<Self, SizeMismatchError> {
         let mut inner = Self::default();
         let s = std::mem::size_of::<Self>();
