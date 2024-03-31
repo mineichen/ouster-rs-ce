@@ -161,6 +161,7 @@ impl FromStr for LidarProfile {
 pub struct ValidWindow<TProfile> {
     pub(crate) start_measurement_id: u16,
     pub(crate) required_measurements: usize,
+    pub(crate) measurements_per_frame: u16,
     phantom: PhantomData<TProfile>,
 }
 
@@ -200,6 +201,7 @@ impl<TProfile: Profile> ValidWindow<TProfile> {
         Self {
             start_measurement_id,
             required_measurements: (required_measurements as _),
+            measurements_per_frame: columns_per_frame / TProfile::COLUMNS as u16,
             phantom: PhantomData,
         }
     }

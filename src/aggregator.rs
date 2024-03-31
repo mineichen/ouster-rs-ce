@@ -31,7 +31,8 @@ impl<TProfile: Profile> AggregatorEntry<TProfile> {
 
 pub struct Aggregator<TProfile: Profile> {
     start_measurement_id: u16,
-    cols_per_rotation: usize,
+    captured_cols_per_rotation: usize,
+    total_measurements_per_frame: u16,
     entry_active: AggregatorEntry<TProfile>,
     entry_other: AggregatorEntry<TProfile>,
     entry_out: Arc<AggregatorEntry<TProfile>>,
@@ -53,7 +54,8 @@ impl<TProfile: Profile> Aggregator<TProfile> {
         let required_measurements = valid_config.required_measurements;
         Self {
             start_measurement_id: valid_config.start_measurement_id(),
-            cols_per_rotation: required_measurements * TProfile::COLUMNS,
+            captured_cols_per_rotation: required_measurements * TProfile::COLUMNS,
+            total_measurements_per_frame: valid_config.measurements_per_frame,
             entry_active: AggregatorEntry::new(required_measurements),
             entry_other: AggregatorEntry::new(required_measurements),
             entry_out: Arc::new(AggregatorEntry::new(required_measurements)),
@@ -118,12 +120,13 @@ impl<TProfile: Profile> Aggregator<TProfile> {
         let idx = {
             let pos = self.tmp.columns.as_ref()[0].channels_header.measurement_id
                 / TProfile::COLUMNS as u16;
-            (if pos < self.start_measurement_id {
-                pos + self.missing_packets.len() as u16
+            let idx = if pos < self.start_measurement_id {
+                pos + self.total_measurements_per_frame - self.start_measurement_id
             } else {
-                pos
-            } - self.start_measurement_id) as usize
-        };
+                pos - self.start_measurement_id
+            };
+            idx
+        } as usize;
 
         if idx >= self.entry_active.complete_buf.len() {
             return None;
@@ -161,7 +164,7 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                     self.completion_historgram[out.count_packets.min(last_index)] += 1;
 
                     let mut hist = out.missing_packet_histogram;
-                    for x in 0..(self.cols_per_rotation / TProfile::COLUMNS) {
+                    for x in 0..(self.captured_cols_per_rotation / TProfile::COLUMNS) {
                         if hist & 1 == 0 {
                             *out.complete_buf[x] = OusterPacket::zeroed();
                             self.missing_packets[x] += 1;
@@ -252,11 +255,27 @@ mod tests {
 
     #[test]
     fn bellow_start_measurement_id() {
+        test_window((32, 0));
+    }
+
+    #[test]
+    fn without_missing() {
+        test_window((0, 1023));
+    }
+
+    #[test]
+    fn high_start_measurement_id() {
+        test_window((740, 240));
+    }
+
+    fn test_window(window: (u16, u16)) {
+        let valid_win = ValidWindow::new(window, 1024);
         let mut input = (0..).map(|i| {
             let mut x = Dual64OusterPacket::default();
             x.header.frame_id = i / 64;
-            x.columns[0].channels_header.measurement_id =
-                (i % 64) * DualProfile::<16, 128>::COLUMNS as u16;
+            x.columns[0].channels_header.measurement_id = ((i + valid_win.start_measurement_id())
+                % 64)
+                * DualProfile::<16, 128>::COLUMNS as u16;
             for col in x.columns.iter_mut() {
                 for ch in col.channels.iter_mut() {
                     ch.info_ret1.raw = 1;
@@ -264,7 +283,7 @@ mod tests {
             }
             x
         });
-        let mut aggregator = Aggregator::new(&ValidWindow::new((32, 0), 1024));
+        let mut aggregator = Aggregator::new(&valid_win);
 
         for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
@@ -277,23 +296,6 @@ mod tests {
                 .iter()
                 .all(|x| x.channels.iter().all(|f| f.info_ret1.raw == 1))
         }));
-    }
-
-    #[test]
-    fn without_missing() {
-        let mut input = (0..).map(|i| {
-            let mut x = Dual64OusterPacket::default();
-            x.header.frame_id = i / 64;
-            x
-        });
-        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023), 1024));
-
-        for i in (&mut input).take(63 + 10) {
-            assert!(aggregator.put_data_value(i).is_none());
-        }
-        aggregator
-            .put_data_value(input.next().unwrap())
-            .expect("Pointcloud should be complete");
     }
 
     #[test]
