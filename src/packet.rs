@@ -237,7 +237,7 @@ impl PointInfos for LowDataChannel {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct RangeData {
-    raw: u32,
+    pub(crate) raw: u32,
 }
 
 impl RangeData {

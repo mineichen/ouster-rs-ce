@@ -31,7 +31,7 @@ impl<TProfile: Profile> AggregatorEntry<TProfile> {
 
 pub struct Aggregator<TProfile: Profile> {
     start_measurement_id: u16,
-    measurements_per_rotation: usize,
+    cols_per_rotation: usize,
     entry_active: AggregatorEntry<TProfile>,
     entry_other: AggregatorEntry<TProfile>,
     entry_out: Arc<AggregatorEntry<TProfile>>,
@@ -50,18 +50,18 @@ pub struct AggregatorStatistics {
 
 impl<TProfile: Profile> Aggregator<TProfile> {
     pub fn new(valid_config: &ValidWindow<TProfile>) -> Self {
-        let required_packets = valid_config.required_packets;
+        let required_measurements = valid_config.required_measurements;
         Self {
-            start_measurement_id: valid_config.start_measurement_id,
-            measurements_per_rotation: required_packets * TProfile::COLUMNS,
-            entry_active: AggregatorEntry::new(required_packets),
-            entry_other: AggregatorEntry::new(required_packets),
-            entry_out: Arc::new(AggregatorEntry::new(required_packets)),
+            start_measurement_id: valid_config.start_measurement_id(),
+            cols_per_rotation: required_measurements * TProfile::COLUMNS,
+            entry_active: AggregatorEntry::new(required_measurements),
+            entry_other: AggregatorEntry::new(required_measurements),
+            entry_out: Arc::new(AggregatorEntry::new(required_measurements)),
             tmp: Default::default(),
             // +2 is to detect if more than the expected number of Packagers enters
             // Example required_packages=2 [none, one_package, two_packages, more]
-            completion_historgram: vec![Saturating(0); required_packets + 2],
-            missing_packets: vec![Saturating(0); required_packets],
+            completion_historgram: vec![Saturating(0); required_measurements + 2],
+            missing_packets: vec![Saturating(0); required_measurements],
             dropped_packets: Saturating(0),
         }
     }
@@ -115,9 +115,15 @@ impl<TProfile: Profile> Aggregator<TProfile> {
     }
 
     pub fn process_tmp(&mut self) -> Option<CompleteData<TProfile>> {
-        let idx = (self.tmp.columns.as_ref()[0].channels_header.measurement_id) as usize
-            / TProfile::COLUMNS
-            - self.start_measurement_id as usize;
+        let idx = {
+            let pos = self.tmp.columns.as_ref()[0].channels_header.measurement_id
+                / TProfile::COLUMNS as u16;
+            (if pos < self.start_measurement_id {
+                pos + self.missing_packets.len() as u16
+            } else {
+                pos
+            } - self.start_measurement_id) as usize
+        };
 
         if idx >= self.entry_active.complete_buf.len() {
             return None;
@@ -155,7 +161,7 @@ impl<TProfile: Profile> Aggregator<TProfile> {
                     self.completion_historgram[out.count_packets.min(last_index)] += 1;
 
                     let mut hist = out.missing_packet_histogram;
-                    for x in 0..(self.measurements_per_rotation / TProfile::COLUMNS) {
+                    for x in 0..(self.cols_per_rotation / TProfile::COLUMNS) {
                         if hist & 1 == 0 {
                             *out.complete_buf[x] = OusterPacket::zeroed();
                             self.missing_packets[x] += 1;
@@ -240,9 +246,38 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Dual64OusterPacket, ValidWindow};
+    use crate::{Dual64OusterPacket, DualProfile, Profile, ValidWindow};
 
     use super::Aggregator;
+
+    #[test]
+    fn bellow_start_measurement_id() {
+        let mut input = (0..).map(|i| {
+            let mut x = Dual64OusterPacket::default();
+            x.header.frame_id = i / 64;
+            x.columns[0].channels_header.measurement_id =
+                (i % 64) * DualProfile::<16, 128>::COLUMNS as u16;
+            for col in x.columns.iter_mut() {
+                for ch in col.channels.iter_mut() {
+                    ch.info_ret1.raw = 1;
+                }
+            }
+            x
+        });
+        let mut aggregator = Aggregator::new(&ValidWindow::new((32, 0), 1024));
+
+        for i in (&mut input).take(63 + 10) {
+            assert!(aggregator.put_data_value(i).is_none());
+        }
+        let pc = aggregator
+            .put_data_value(input.next().unwrap())
+            .expect("Pointcloud should be complete");
+        assert!(pc.iter().all(|x| {
+            x.columns
+                .iter()
+                .all(|x| x.channels.iter().all(|f| f.info_ret1.raw == 1))
+        }));
+    }
 
     #[test]
     fn without_missing() {
@@ -251,7 +286,7 @@ mod tests {
             x.header.frame_id = i / 64;
             x
         });
-        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023), 1024));
 
         for i in (&mut input).take(63 + 10) {
             assert!(aggregator.put_data_value(i).is_none());
@@ -263,7 +298,7 @@ mod tests {
 
     #[test]
     fn ignore_old_frame() {
-        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023), 1024));
         let mut packet = Dual64OusterPacket::default();
         packet.header.frame_id = 10;
         aggregator.put_data_value(packet);
@@ -285,7 +320,7 @@ mod tests {
 
             x
         });
-        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023)));
+        let mut aggregator = Aggregator::new(&ValidWindow::new((0, 1023), 1024));
 
         for (i, data) in (&mut input).take(64 + 9).enumerate() {
             assert!(aggregator.put_data_value(data).is_none(), "Item {i}");

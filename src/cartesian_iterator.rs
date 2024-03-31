@@ -131,7 +131,7 @@ mod tests {
         let x = CartesianIterator::new(
             [(0.1, 0.2), (0.3, 0.4)],
             2,
-            ValidWindow::<DualProfile<1, 3>>::new((0, 1)),
+            ValidWindow::<DualProfile<1, 3>>::new((0, 1), 2),
             10.,
             15.,
         )
