@@ -187,8 +187,8 @@ impl PointInfos for SingleChannel {
 
     fn get_primary_infos(&self, n_vec: u32) -> crate::PrimaryPointInfo<Self::Signal> {
         PrimaryPointInfo {
-            distance: ((self.range_and_reserved & ((1 << 20) - 1)) - n_vec).min(u16::MAX as _)
-                as u16,
+            distance: ((self.range_and_reserved & ((1 << 20) - 1)).saturating_sub(n_vec))
+                .min(u16::MAX as _) as u16,
             reflectifity: self.reflectifity,
             nir: (self.nir >> 8) as u8,
             signal: self.signal,
@@ -221,9 +221,9 @@ impl PointInfos for LowDataChannel {
     type Infos = [PointChannelInfo<Self::Signal>; 1];
     fn get_primary_infos(&self, n_vec: u32) -> crate::PrimaryPointInfo<Self::Signal> {
         PrimaryPointInfo {
-            distance: ((((self.distance_and_reserve.overflowing_mul(2).0) / 2) as u32 * 8)
-                .saturating_sub(n_vec))
-            .min(u16::MAX as _) as u16,
+            distance: (((self.distance_and_reserve.overflowing_mul(2).0) / 2) as u32 * 8)
+                .saturating_sub(n_vec)
+                .min(u16::MAX as _) as u16,
             reflectifity: self.reflectifity,
             nir: self.nir,
             signal: (),
@@ -251,7 +251,9 @@ pub struct RangeData {
 
 impl RangeData {
     pub fn get_distance(&self, n_vec: u32) -> u16 {
-        (self.raw & (((1 << 20) - 1) - n_vec)).min(u16::MAX as _) as u16
+        (self.raw & ((1 << 20) - 1))
+            .saturating_sub(n_vec)
+            .min(u16::MAX as _) as u16
     }
 
     pub fn get_reflectifity(&self) -> u8 {
