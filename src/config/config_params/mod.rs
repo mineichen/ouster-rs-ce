@@ -72,12 +72,13 @@ impl TryFrom<ConfigParamsRaw> for ConfigParams {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum LidarMode {
     #[serde(rename = "512x10")]
     Mode512x10,
     #[serde(rename = "512x20")]
     Mode512x20,
+    #[default]
     #[serde(rename = "1024x10")]
     Mode1024x10,
     #[serde(rename = "1024x20")]

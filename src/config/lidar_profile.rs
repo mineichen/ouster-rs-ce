@@ -2,9 +2,10 @@ use std::{borrow::Cow, fmt::Debug, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
 #[non_exhaustive]
 pub enum LidarProfile {
+    #[default]
     SingleReturn,
     DualReturn,
     LowData,
