@@ -28,7 +28,7 @@ impl AzimuthWindow {
         if self[0] < self[1] {
             self[1] - self[0]
         } else {
-            360_000 - self[1] + self[0]
+            dbg!(360_000 - self[0]) + self[1]
         }
     }
 }
@@ -49,5 +49,30 @@ impl Deref for AzimuthWindow {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::AzimuthWindow;
+
+    #[test]
+    fn overflow_angel() {
+        assert_eq!(
+            20_000,
+            AzimuthWindow::try_from([350_000, 10_000])
+                .unwrap()
+                .milli_angle_deg()
+        );
+    }
+
+    #[test]
+    fn simple_angel() {
+        assert_eq!(
+            20_000,
+            AzimuthWindow::try_from([10_000, 30_000])
+                .unwrap()
+                .milli_angle_deg()
+        );
     }
 }

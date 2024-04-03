@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::InvalidConfig;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SignalMultiplier {
     Quarter,
     Half,

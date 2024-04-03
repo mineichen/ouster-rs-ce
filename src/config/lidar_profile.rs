@@ -42,7 +42,7 @@ impl FromStr for LidarProfile {
             "RNG19_RFL8_SIG16_NIR16" => Ok(Self::SingleReturn),
             "RNG15_RFL8_NIR8" => Ok(Self::LowData),
             "RNG19_RFL8_SIG16_NIR16_DUAL" => Ok(Self::DualReturn),
-            s => Err(format!("Can't parse '{}'into LidarProfile", s).into()),
+            s => Err(format!("Can't parse '{}' into LidarProfile", s).into()),
         }
     }
 }
