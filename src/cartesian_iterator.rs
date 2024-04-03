@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, marker::PhantomData, sync::Arc};
 
-use crate::{Profile, ValidOusterConfig, ValidWindow};
+use crate::{Profile, ValidOperationConfig, ValidWindow};
 
 #[derive(Debug)]
 pub struct PolarPoint {
@@ -19,7 +19,7 @@ impl PolarPoint {
 }
 
 impl<TProfile: Profile> CartesianIterator<TProfile, Arc<[(f32, f32)]>> {
-    pub fn new_cheap_cloneable_from_config(config: &ValidOusterConfig<TProfile>) -> Self {
+    pub fn new_cheap_cloneable_from_config(config: &ValidOperationConfig<TProfile>) -> Self {
         let azimuth_roh_lut = config
             .beam_intrinsics
             .beam_azimuth_angles

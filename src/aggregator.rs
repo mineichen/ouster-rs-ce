@@ -3,7 +3,7 @@ use std::{num::Saturating, sync::Arc};
 use bytemuck::Zeroable;
 
 use crate::{
-    profile::Profile, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo, ValidOusterConfig,
+    profile::Profile, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo, ValidOperationConfig,
     ValidWindow,
 };
 
@@ -204,7 +204,7 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
     pub fn iter_flat<'a, T>(
         &'a self,
-        config: &ValidOusterConfig<TProfile>,
+        config: &ValidOperationConfig<TProfile>,
         mut map: impl FnMut(&<TProfile as Profile>::Channel, u32) -> T + 'a,
     ) -> impl Iterator<Item = T> + '_ {
         let n_vec = config.n_vec();
@@ -216,14 +216,14 @@ impl<TProfile: Profile> CompleteData<TProfile> {
 
     pub fn iter_infos(
         &self,
-        config: &ValidOusterConfig<TProfile>,
+        config: &ValidOperationConfig<TProfile>,
     ) -> impl Iterator<Item = PointInfo<<TProfile::Channel as PointInfos>::Infos>> + '_ {
         self.iter_flat(config, |point, nvec| point.get_infos(nvec))
     }
 
     pub fn iter_infos_primary(
         &self,
-        config: &ValidOusterConfig<TProfile>,
+        config: &ValidOperationConfig<TProfile>,
     ) -> impl Iterator<Item = PrimaryPointInfo<<TProfile::Channel as PointInfos>::Signal>> + '_
     {
         self.iter_flat(config, |point, nvec| point.get_primary_infos(nvec))
