@@ -3,8 +3,8 @@ use std::{num::Saturating, sync::Arc};
 use bytemuck::Zeroable;
 
 use crate::{
-    profile::Profile, OusterPacket, PointInfo, PointInfos, PrimaryPointInfo, ValidOperationConfig,
-    ValidWindow,
+    profile::Profile, OusterPacket, PacketHeader, PointInfo, PointInfos, PrimaryPointInfo,
+    ValidOperationConfig, ValidWindow,
 };
 
 #[derive(Clone)]
@@ -132,13 +132,13 @@ impl<TProfile: Profile> Aggregator<TProfile> {
             return None;
         }
 
-        if self.entry_active.frame_id == self.tmp.header.frame_id {
+        if self.entry_active.frame_id == self.tmp.header.frame_id() {
             std::mem::swap(&mut self.entry_active.complete_buf[idx], &mut self.tmp);
             self.entry_active.count_packets += 1;
             self.entry_active.missing_packet_histogram |= 1 << idx;
             None
-        } else if self.entry_other.frame_id != self.tmp.header.frame_id {
-            self.entry_other.frame_id = self.tmp.header.frame_id;
+        } else if self.entry_other.frame_id != self.tmp.header.frame_id() {
+            self.entry_other.frame_id = self.tmp.header.frame_id();
             std::mem::swap(&mut self.entry_other.complete_buf[idx], &mut self.tmp);
             self.dropped_packets += self.entry_other.count_packets as u32;
             self.entry_other.count_packets = 1;

@@ -4,7 +4,7 @@ use bytemuck::Zeroable;
 
 use crate::{
     profile::{DualProfile, Profile},
-    PointChannelInfo, PointInfo, PointInfos, PrimaryPointInfo, SingleProfile,
+    SingleProfile,
 };
 
 pub type Dual128OusterPacket = OusterPacket<DualProfile<16, 128>>;
@@ -14,9 +14,19 @@ pub type Dual64OusterPacket = OusterPacket<DualProfile<16, 64>>;
 #[repr(C)]
 #[derive(Debug, Clone, Zeroable)]
 pub struct OusterPacket<TProfile: Profile> {
-    pub header: OusterPacketHeader,
+    pub header: TProfile::Header,
     pub columns: TProfile::Columns,
     pub reserved: [u32; 8],
+}
+
+pub trait PacketHeader {
+    fn frame_id(&self) -> u16;
+}
+
+impl PacketHeader for OusterPacketHeader {
+    fn frame_id(&self) -> u16 {
+        self.frame_id
+    }
 }
 
 #[repr(C)]
@@ -34,6 +44,32 @@ pub struct OusterPacketHeader {
     pub shutdown_status_and_reserve: u8,
     pub shot_limiting_status_and_reserve: u8,
     _reserved_2: [u32; 3],
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Zeroable)]
+pub struct OusterPacketHeaderSafety {
+    pub packet_type: u8,
+    pub init_id_part2: u8,
+    pub init_id_part1: u16,
+    pub frame_id: u32,
+    pub alert_flag: u8,
+    _reserved_1: u8,
+    _reserved_2: u8,
+    pub serial_no_1: u8,
+    pub serial_no_2: u32,
+    pub shutdown_countdown: u8,
+    pub shot_limiting_countdown: u8,
+    pub shutdown_status_and_reserve: u8,
+    pub shot_limiting_status_and_reserve: u8,
+    _reserved_3: [u32; 3],
+}
+
+impl PacketHeader for OusterPacketHeaderSafety {
+    fn frame_id(&self) -> u16 {
+        // Ignore upper part for compatibility with Non-Safety header
+        self.frame_id as u16
+    }
 }
 
 impl<TProfile: Profile> Default for OusterPacket<TProfile> {
@@ -129,122 +165,6 @@ impl ChannelsHeader {
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, Zeroable)]
-pub struct DualChannel {
-    pub info_ret1: RangeData,
-    pub info_ret2: RangeData,
-    pub signal_ret_1: u16,
-    pub signal_ret_2: u16,
-    pub nir: u16,
-    _reserved: u16,
-}
-
-impl PointInfos for DualChannel {
-    type Signal = u16;
-    type Infos = [PointChannelInfo<Self::Signal>; 2];
-    fn get_primary_infos(&self, n_vec: u32) -> crate::PrimaryPointInfo<Self::Signal> {
-        PrimaryPointInfo {
-            distance: self.info_ret1.get_distance(n_vec),
-            reflectifity: self.info_ret1.get_reflectifity(),
-            nir: (self.nir >> 8) as u8,
-            signal: self.signal_ret_1,
-        }
-    }
-
-    fn get_infos(&self, n_vec: u32) -> PointInfo<Self::Infos> {
-        let primary = self.get_primary_infos(n_vec);
-        PointInfo {
-            channel_info: [
-                PointChannelInfo {
-                    distance: primary.distance,
-                    reflectifity: primary.reflectifity,
-                    signal: self.signal_ret_1,
-                },
-                PointChannelInfo {
-                    distance: self.info_ret2.get_distance(n_vec),
-                    reflectifity: self.info_ret2.get_reflectifity(),
-                    signal: self.signal_ret_2,
-                },
-            ],
-            nir: primary.nir,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy, Zeroable)]
-pub struct SingleChannel {
-    pub range_and_reserved: u32,
-    pub reflectifity: u8,
-    _reserved: u8,
-    pub signal: u16,
-    pub nir: u16,
-    _reserved2: u16,
-}
-
-impl PointInfos for SingleChannel {
-    type Signal = u16;
-    type Infos = [PointChannelInfo<Self::Signal>; 1];
-
-    fn get_primary_infos(&self, n_vec: u32) -> crate::PrimaryPointInfo<Self::Signal> {
-        PrimaryPointInfo {
-            distance: ((self.range_and_reserved & ((1 << 20) - 1)).saturating_sub(n_vec))
-                .min(u16::MAX as _) as u16,
-            reflectifity: self.reflectifity,
-            nir: (self.nir >> 8) as u8,
-            signal: self.signal,
-        }
-    }
-
-    fn get_infos(&self, n_vec: u32) -> PointInfo<Self::Infos> {
-        let primary = self.get_primary_infos(n_vec);
-        PointInfo {
-            nir: primary.nir,
-            channel_info: [PointChannelInfo {
-                distance: primary.distance,
-                reflectifity: primary.reflectifity,
-                signal: primary.signal,
-            }],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy, Zeroable)]
-pub struct LowDataChannel {
-    pub distance_and_reserve: u16,
-    pub reflectifity: u8,
-    pub nir: u8,
-}
-
-impl PointInfos for LowDataChannel {
-    type Signal = ();
-    type Infos = [PointChannelInfo<Self::Signal>; 1];
-    fn get_primary_infos(&self, n_vec: u32) -> crate::PrimaryPointInfo<Self::Signal> {
-        PrimaryPointInfo {
-            distance: (((self.distance_and_reserve.overflowing_mul(2).0) / 2) as u32 * 8)
-                .saturating_sub(n_vec)
-                .min(u16::MAX as _) as u16,
-            reflectifity: self.reflectifity,
-            nir: self.nir,
-            signal: (),
-        }
-    }
-
-    fn get_infos(&self, n_vec: u32) -> PointInfo<Self::Infos> {
-        let primary = self.get_primary_infos(n_vec);
-        PointInfo {
-            nir: primary.nir,
-            channel_info: [PointChannelInfo {
-                distance: primary.distance,
-                reflectifity: primary.reflectifity,
-                signal: (),
-            }],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy, Zeroable)]
 pub struct RangeData {
     pub(crate) raw: u32,
 }
@@ -268,10 +188,12 @@ mod tests {
     #[test]
     fn assert_correct_structsize() {
         assert_eq!(256 / 8, std::mem::size_of::<OusterPacketHeader>());
+        assert_eq!(256 / 8, std::mem::size_of::<OusterPacketHeaderSafety>());
         assert_eq!(96 / 8, std::mem::size_of::<ChannelsHeader>());
-        assert_eq!(128 / 8, std::mem::size_of::<super::DualChannel>());
-        assert_eq!(96 / 8, std::mem::size_of::<super::SingleChannel>());
-        assert_eq!(32 / 8, std::mem::size_of::<super::RangeData>());
+        assert_eq!(128 / 8, std::mem::size_of::<crate::DualChannel>());
+        assert_eq!(96 / 8, std::mem::size_of::<crate::SingleChannel>());
+        assert_eq!(32 / 8, std::mem::size_of::<crate::RangeData>());
+        assert_eq!(64 / 8, std::mem::size_of::<crate::DualLowChannel>());
         assert_eq!(33024, std::mem::size_of::<Dual128OusterPacket>());
         assert_eq!(24832, std::mem::size_of::<Single128OusterPacket>());
     }

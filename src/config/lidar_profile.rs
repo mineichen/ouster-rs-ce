@@ -9,6 +9,7 @@ pub enum LidarProfile {
     SingleReturn,
     DualReturn,
     LowData,
+    DualLowData,
 }
 
 impl Serialize for LidarProfile {
@@ -20,6 +21,7 @@ impl Serialize for LidarProfile {
             LidarProfile::SingleReturn => "RNG19_RFL8_SIG16_NIR16",
             LidarProfile::DualReturn => "RNG19_RFL8_SIG16_NIR16_DUAL",
             LidarProfile::LowData => "RNG15_RFL8_NIR8",
+            LidarProfile::DualLowData => "FUSA_RNG15_RFL8_NIR8_DUAL",
         })
     }
 }
@@ -42,6 +44,7 @@ impl FromStr for LidarProfile {
             "RNG19_RFL8_SIG16_NIR16" => Ok(Self::SingleReturn),
             "RNG15_RFL8_NIR8" => Ok(Self::LowData),
             "RNG19_RFL8_SIG16_NIR16_DUAL" => Ok(Self::DualReturn),
+            "FUSA_RNG15_RFL8_NIR8_DUAL" => Ok(Self::DualLowData),
             s => Err(format!("Can't parse '{}' into LidarProfile", s).into()),
         }
     }

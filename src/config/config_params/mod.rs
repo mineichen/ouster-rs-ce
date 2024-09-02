@@ -1,6 +1,6 @@
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{InvalidConfig, LidarProfile};
 
@@ -14,10 +14,25 @@ pub use signal_multiplier::*;
 pub struct ConfigParamsRaw {
     pub azimuth_window: AzimuthWindow,
     pub lidar_mode: LidarMode,
-    pub udp_dest: Ipv4Addr,
+    #[serde(deserialize_with = "option_v4_for_empty_string")]
+    pub udp_dest: Option<Ipv4Addr>,
     pub udp_port_lidar: u16,
     pub udp_profile_lidar: LidarProfile,
     pub signal_multiplier: SignalMultiplier,
+}
+
+fn option_v4_for_empty_string<'de, D>(deserializer: D) -> Result<Option<Ipv4Addr>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let as_str = String::deserialize(deserializer)?;
+    if as_str.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(
+            Ipv4Addr::from_str(&as_str).map_err(|e| <D::Error as serde::de::Error>::custom(e))?,
+        ))
+    }
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
